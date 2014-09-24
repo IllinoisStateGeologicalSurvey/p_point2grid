@@ -70,8 +70,11 @@ POSSIBILITY OF SUCH DAMAGE.
 /////////////////////////////////////////////////////////////
 
 Interpolation::Interpolation(double x_dist, double y_dist, double radius,
-                             int _window_size, int _interpolation_mode = INTERP_AUTO) : GRID_DIST_X (x_dist), GRID_DIST_Y(y_dist)
+                             int _window_size, int _interpolation_mode = INTERP_AUTO,
+                             int _rank = 0, int _process_count = 1) : GRID_DIST_X (x_dist), GRID_DIST_Y(y_dist)
 {
+    rank = _rank;
+    process_count = _process_count;
     data_count = 0;
     radius_sqr = radius * radius;
     window_size = _window_size;
@@ -82,6 +85,7 @@ Interpolation::Interpolation(double x_dist, double y_dist, double radius,
 
     max_x = -DBL_MAX;
     max_y = -DBL_MAX;
+    //printf ("mode %i\n", interpolation_mode);
 }
 
 Interpolation::~Interpolation()
@@ -91,6 +95,8 @@ Interpolation::~Interpolation()
 
 int Interpolation::init(char *inputName, int inputFormat)
 {
+
+
     //unsigned int i;
 
     //struct tms tbuf;
@@ -190,6 +196,7 @@ int Interpolation::init(char *inputName, int inputFormat)
         min_y = las.minimums()[1];
         max_x = las.maximums()[0];
         max_y = las.maximums()[1];
+
         data_count = las.points_count();
         
         las.close();
@@ -244,6 +251,12 @@ int Interpolation::init(char *inputName, int inputFormat)
 
         cerr << "Interpolation uses out-of-core algorithm" << endl;
 
+    } else if (interpolation_mode == INTERP_MPI){
+        cerr << "Using mpi interp code" << endl;
+
+        interp = new MpiInterp(GRID_DIST_X, GRID_DIST_Y, GRID_SIZE_X, GRID_SIZE_Y, radius_sqr, min_x, max_x, min_y, max_y, window_size, rank, process_count);
+
+        cerr << "Interpolation uses mpi algorithm" << endl;
     } else {
         cerr << "Using incore interp code" << endl;
 
@@ -251,7 +264,6 @@ int Interpolation::init(char *inputName, int inputFormat)
 
         cerr << "Interpolation uses in-core algorithm" << endl;
     }
-
     if(interp->init() < 0)
     {
         cerr << "inter->init() error" << endl;
@@ -325,38 +337,55 @@ int Interpolation::interpolation(char *inputName,
         fclose(fp);
     } 
 
-    else { // input format is LAS
+    else
+    { // input format is LAS
 
-        las_file las;
-        las.open(inputName);
-    
         
-        size_t count = las.points_count();
-        size_t index(0);
-        while (index < count) {
-            data_x = las.getX(index);
-            data_y = las.getY(index);
-            data_z = las.getZ(index);
-            
-            data_x -= min_x;
-            data_y -= min_y;
-            
-            if ((rc = interp->update(data_x, data_y, data_z)) < 0) {
-                cerr << "interp->update() error while processing " << endl;
-                return -1;
+        if (rank == 0)
+        {
+            las_file las;
+            las.open (inputName);
+
+            size_t count = las.points_count ();
+            size_t index (0);
+            while (index < count)
+            {
+                data_x = las.getX (index);
+                data_y = las.getY (index);
+                data_z = las.getZ (index);
+
+                data_x -= min_x;
+                data_y -= min_y;
+
+                if ((rc = interp->update (data_x, data_y, data_z)) < 0)
+                {
+                    cerr << "interp->update() error while processing " << endl;
+                    return -1;
+                }
+                index++;
             }
-            index++;
+            interp->comm_done = 1;
+            int i;
+            for(i=1; i<process_count; i++)
+            {
+                interp->updateGridPointSend(i,1,1,1,1);
+            }
+        }
+        else // rank is a worker
+        {
+            interp->updateGridPointRecv();
         }
         
 
-    }
 
+    }
+/*
     if((rc = interp->finish(outputName, outputFormat, outputType)) < 0)
     {
         cerr << "interp->finish() error" << endl;
         return -1;
     }
-
+*/
     cerr << "Interpolation::interpolation() done successfully" << endl;
 
     return 0;

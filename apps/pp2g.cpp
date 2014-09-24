@@ -65,6 +65,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <stdexcept>
 #include <boost/program_options.hpp>
+#include <mpi.h>
 
 #ifdef CURL_FOUND
 #include <curl/curl.h>
@@ -76,6 +77,10 @@ const std::string appName("points2grid");
 
 int main(int argc, char **argv)
 {
+
+    int rank = 0;
+    int process_count = 1;
+
     clock_t t0, t1;
 
     // parameters
@@ -84,7 +89,7 @@ int main(int argc, char **argv)
     char outputName[1024] = {0};
 
     int input_format = INPUT_LAS;
-    int interpolation_mode = INTERP_AUTO;
+    int interpolation_mode = INTERP_INCORE;
     int output_format = 0;
     unsigned int type = 0x00000000;
     double GRID_DIST_X = 6.0;
@@ -376,8 +381,19 @@ int main(int argc, char **argv)
 
     t0 = clock();
 
+    interpolation_mode = INTERP_MPI;
+
+    if (interpolation_mode == INTERP_MPI)
+    {
+        MPI_Init (&argc, &argv);
+        MPI_Comm_size (MPI_COMM_WORLD, &process_count);
+        MPI_Comm_rank (MPI_COMM_WORLD, &rank);
+        printf ("MPI task %d has started...\n", rank);
+    }
+
+
     Interpolation *ip = new Interpolation(GRID_DIST_X, GRID_DIST_Y, searchRadius,
-                                          window_size, interpolation_mode);
+                                          window_size, interpolation_mode, rank, process_count);
 
     if(ip->init(inputName, input_format) < 0)
     {

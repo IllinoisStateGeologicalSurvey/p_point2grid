@@ -1,1 +1,1 @@
-./points2grid -i example.las -o output
+./pp2g -i example.las -o output

@@ -56,6 +56,7 @@ using namespace std;
 #include <points2grid/CoreInterp.hpp>
 #include <points2grid/OutCoreInterp.hpp>
 #include <points2grid/InCoreInterp.hpp>
+#include <points2grid/MpiInterp.hpp>
 #include <points2grid/export.hpp>
 
 //class GridPoint;
@@ -64,7 +65,7 @@ class P2G_DLL Interpolation
 {
 public:
     Interpolation(double x_dist, double y_dist, double radius,
-                  int _window_size, int _interpolation_mode);
+                  int _window_size, int _interpolation_mode, int _rank, int _process_count);
     ~Interpolation();
 
     int init(char *inputName, int inputFormat);
@@ -91,6 +92,9 @@ public:
     // update this to the maximum grid that will fit in memory
     // as a rule of thumb, memory requirement = MEM_LIMIT*55 bytes
     static const unsigned int MEM_LIMIT = 200000000;
+
+    int process_count;
+    int rank;
 
 private:
     double min_x;

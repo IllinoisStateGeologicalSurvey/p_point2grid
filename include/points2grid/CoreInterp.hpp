@@ -57,6 +57,11 @@ public:
     virtual int init() = 0;
     virtual int update(double data_x, double data_y, double data_z) = 0;
     virtual int finish(char *outputName, int outputFormat, unsigned int outputType) = 0;
+    virtual void updateGridPointSend(int target_rank, int x, int y, double data_z, double distance){};
+    virtual void updateGridPointRecv(){};
+    int process_count;
+    int rank;
+    int comm_done;
 
 protected:
     double GRID_DIST_X;
