@@ -376,7 +376,7 @@ int Interpolation::interpolation(char *inputName,
             interp->updateGridPointRecv();
         }
         
-
+        //MPI_Barrier(MPI_COMM_WORLD);
 
     }
 /*

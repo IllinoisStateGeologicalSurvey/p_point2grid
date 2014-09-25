@@ -418,6 +418,6 @@ int main(int argc, char **argv)
     printf("dimension: %d x %d\n", ip->getGridSizeX(), ip->getGridSizeY());
 
     delete ip;
-
+    MPI_Finalize();
     return 0;
 }

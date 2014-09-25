@@ -102,17 +102,21 @@ MpiInterp::~MpiInterp()
 int MpiInterp::init()
 {
     int i, j;
-
+    GRID_STRIDE_X = GRID_SIZE_X / (process_count - 1);
     if (rank != 0)
     {
+
+        W_START_GRID_INDEX_X = (rank - 1) * GRID_STRIDE_X;
+        W_END_GRID_INDEX_X =   (rank * GRID_STRIDE_X) - 1;
         int left_over = GRID_SIZE_X % (process_count - 1);
-        int worker_x_size = GRID_SIZE_X / (process_count - 1);
         if (rank == process_count - 1)
         {
-            worker_x_size += left_over;
+            W_END_GRID_INDEX_X += left_over;
         }
 
-        interp = (GridPoint**) malloc (sizeof(GridPoint *) * worker_x_size);
+
+        int my_size_x = W_END_GRID_INDEX_X - W_START_GRID_INDEX_X + 1;
+        interp = (GridPoint**) malloc (sizeof(GridPoint *) * my_size_x);
         //interp = new GridPoint*[GRID_SIZE_X];
         if (interp == NULL)
         {
@@ -120,7 +124,7 @@ int MpiInterp::init()
             return -1;
         }
 
-        for (i = 0; i < worker_x_size; i++)
+        for (i = 0; i < my_size_x; i++)
         {
             interp[i] = (GridPoint *) malloc (sizeof(GridPoint) * GRID_SIZE_Y);
             //interp[i] = new GridPoint[GRID_SIZE_Y];
@@ -131,7 +135,7 @@ int MpiInterp::init()
             }
         }
 
-        for (i = 0; i < worker_x_size; i++)
+        for (i = 0; i < my_size_x; i++)
         {
             for (j = 0; j < GRID_SIZE_Y; j++)
             {
@@ -149,8 +153,9 @@ int MpiInterp::init()
         }
     }
     cerr << "MpiInterp::init() done" << endl;
-
+    MPI_Barrier(MPI_COMM_WORLD);
     return 0;
+
 }
 
 int MpiInterp::update(double data_x, double data_y, double data_z)
@@ -331,7 +336,9 @@ void MpiInterp::update_first_quadrant(double data_z, int base_x, int base_y, dou
                 //interp[i][j]++;
 
                 // update GridPoint
-                int target_rank = i / (GRID_SIZE_X/(process_count-1)) +1;
+                //printf("----------------------------i %i worker size x %i rank %i\n", i, GRID_STRIDE_X, rank);
+                int target_rank = get_target_rank(i);
+                //printf("----------------------------i %i worker size x %i rank %i\n", i, GRID_STRIDE_X, rank);
                 updateGridPointSend(target_rank, i, j, data_z, sqrt(distance));
 
             } else if(j == base_y) {
@@ -364,7 +371,7 @@ void MpiInterp::update_second_quadrant(double data_z, int base_x, int base_y, do
             {
                 //printf("(%d %d) ", i, j);
                 //interp[i][j]++;
-                int target_rank = i / (GRID_SIZE_X/(process_count-1)) +1;
+                int target_rank = get_target_rank(i);
                 updateGridPointSend(target_rank, i, j, data_z, sqrt(distance));
 
 
@@ -396,7 +403,7 @@ void MpiInterp::update_third_quadrant(double data_z, int base_x, int base_y, dou
                 //if(j == 30)
                 //printf("(%d %d)\n", i, j);
                 //interp[i][j]++;
-                int target_rank = i / (GRID_SIZE_X/(process_count-1)) +1;
+                int target_rank = get_target_rank(i);
                 updateGridPointSend(target_rank, i, j, data_z, sqrt(distance));
             } else if(j == base_y) {
                 return;
@@ -422,7 +429,7 @@ void MpiInterp::update_fourth_quadrant(double data_z, int base_x, int base_y, do
             {
                 //printf("(%d %d) ", i, j);
                 //interp[i][j]++;
-                int target_rank = i / (GRID_SIZE_X/(process_count-1)) +1;
+                int target_rank = get_target_rank(i);
                 updateGridPointSend(target_rank, i, j, data_z, sqrt(distance));
             } else if (j == base_y) {
                 return ;
@@ -433,6 +440,29 @@ void MpiInterp::update_fourth_quadrant(double data_z, int base_x, int base_y, do
     }
 }
 
+// this can only be called by reader processes, currently only rank 0 is a reader
+// todo, modify reader_count to work with more than one reader
+
+int MpiInterp::get_target_rank(int grid_index){
+    int reader_count = 1;
+    int rtn = grid_index/GRID_STRIDE_X + reader_count;
+    if (rtn < process_count)
+    {
+        return rtn;
+    }
+    else if (rtn = process_count)
+    {
+        return rtn - 1; // this handles the left over columns assigned to the last worker process
+    }
+
+    else
+    {
+        fprintf(stderr, "MpiInterp::get_target_rank: worker process overflow, logic error");
+        return -1;
+    }
+}
+
+
 void MpiInterp::updateGridPointSend(int target_rank, int x, int y, double data_z, double distance)
 {
 
@@ -441,14 +471,18 @@ void MpiInterp::updateGridPointSend(int target_rank, int x, int y, double data_z
     comm_data_z = data_z;
     comm_distance = distance;
 
-    printf("-----------------------------rank %i, target_rank %i\n", rank, target_rank);
-
+    //printf("-----------------------------rank %i, target_rank %i\n", rank, target_rank);
+    //printf ("before comm_done %i, rank %i\n", comm_done, rank);
     MPI_Send(&comm_done, 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
-    MPI_Send(&comm_x, 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
-    MPI_Send(&comm_y, 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
-    MPI_Send(&comm_data_z, 1, MPI_DOUBLE, target_rank, 1, MPI_COMM_WORLD);
-    MPI_Send(&comm_distance, 1, MPI_DOUBLE, target_rank, 1, MPI_COMM_WORLD);
-
+    //printf ("comm_done %i, rank %i\n", comm_done, rank);
+    if (!comm_done)
+    {
+        MPI_Send (&comm_x, 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
+        MPI_Send (&comm_y, 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
+        MPI_Send (&comm_data_z, 1, MPI_DOUBLE, target_rank, 1, MPI_COMM_WORLD);
+        MPI_Send (&comm_distance, 1, MPI_DOUBLE, target_rank, 1,
+                  MPI_COMM_WORLD);
+    }
 
 }
 
@@ -459,6 +493,7 @@ void MpiInterp::updateGridPointRecv()
 
     while(!comm_done){
         MPI_Recv(&comm_done, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
+        //printf ("comm_done %i, rank %i\n", comm_done, rank);
         if(comm_done)
         {
             break;
@@ -478,6 +513,11 @@ void MpiInterp::updateGridPointRecv()
 
 void MpiInterp::updateGridPoint(int x, int y, double data_z, double distance)
 {
+    //todo update to work with more than one reader
+    int reader_count = 1;
+    x -= (rank-reader_count)*GRID_STRIDE_X;
+    //printf ("rank %i, x %i, y %i, stride %i\n", rank, x, y, GRID_STRIDE_X);
+
 
     if(interp[x][y].Zmin > data_z)
         interp[x][y].Zmin = data_z;
