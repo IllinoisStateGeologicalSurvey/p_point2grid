@@ -102,42 +102,41 @@ MpiInterp::~MpiInterp()
 int MpiInterp::init()
 {
     int i, j;
-    GRID_STRIDE_X = GRID_SIZE_X / (process_count - 1);
+    row_stride = GRID_SIZE_Y / (process_count - 1);
     if (rank != 0)
     {
 
-        W_START_GRID_INDEX_X = (rank - 1) * GRID_STRIDE_X;
-        W_END_GRID_INDEX_X =   (rank * GRID_STRIDE_X) - 1;
-        int left_over = GRID_SIZE_X % (process_count - 1);
+
+        w_row_start_index = (rank - 1) * row_stride;
+        w_row_end_index =   (rank * row_stride) - 1;
+        int left_over = GRID_SIZE_Y % (process_count - 1);
         if (rank == process_count - 1)
         {
-            W_END_GRID_INDEX_X += left_over;
+            w_row_end_index += left_over;
         }
 
 
-        int my_size_x = W_END_GRID_INDEX_X - W_START_GRID_INDEX_X + 1;
-        interp = (GridPoint**) malloc (sizeof(GridPoint *) * my_size_x);
-        //interp = new GridPoint*[GRID_SIZE_X];
+        int row_count = w_row_end_index - w_row_start_index + 1;
+        interp = (GridPoint**) malloc (sizeof(GridPoint *) * row_count);
         if (interp == NULL)
         {
-            cerr << "MpiInterp::init() new allocate error" << endl;
+            cerr << "MpiInterp::init() malloc error" << endl;
             return -1;
         }
 
-        for (i = 0; i < my_size_x; i++)
+        for (i = 0; i < row_count; i++)
         {
             interp[i] = (GridPoint *) malloc (sizeof(GridPoint) * GRID_SIZE_Y);
-            //interp[i] = new GridPoint[GRID_SIZE_Y];
             if (interp[i] == NULL)
             {
-                cerr << "MpiInterp::init() new allocate error" << endl;
+                cerr << "MpiInterp::init() malloc error" << endl;
                 return -1;
             }
         }
 
-        for (i = 0; i < my_size_x; i++)
+        for (i = 0; i < row_count; i++)
         {
-            for (j = 0; j < GRID_SIZE_Y; j++)
+            for (j = 0; j < GRID_SIZE_X; j++)
             {
                 interp[i][j].Zmin = DBL_MAX;
                 interp[i][j].Zmax = -DBL_MAX;
@@ -443,16 +442,16 @@ void MpiInterp::update_fourth_quadrant(double data_z, int base_x, int base_y, do
 // this can only be called by reader processes, currently only rank 0 is a reader
 // todo, modify reader_count to work with more than one reader
 
-int MpiInterp::get_target_rank(int grid_index){
+int MpiInterp::get_target_rank(int row_index){
     int reader_count = 1;
-    int rtn = grid_index/GRID_STRIDE_X + reader_count;
+    int rtn = row_index/row_stride + reader_count;
     if (rtn < process_count)
     {
         return rtn;
     }
-    else if (rtn = process_count)
+    else if (rtn == process_count  && row_index <= w_row_end_index)
     {
-        return rtn - 1; // this handles the left over columns assigned to the last worker process
+        return rtn - 1; // this handles the "left over" rows assigned to the last worker process
     }
 
     else
@@ -515,7 +514,7 @@ void MpiInterp::updateGridPoint(int x, int y, double data_z, double distance)
 {
     //todo update to work with more than one reader
     int reader_count = 1;
-    x -= (rank-reader_count)*GRID_STRIDE_X;
+    y -= (rank-reader_count)*row_stride;
     //printf ("rank %i, x %i, y %i, stride %i\n", rank, x, y, GRID_STRIDE_X);
 
 
@@ -568,11 +567,20 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
 {
     int i,j,k;
 
-    FILE **arcFiles;
+    //FILE **arcFiles;
+    MPI_File *arcFiles;
     char arcFileName[1024];
+    MPI_Offset *arcFileOffsets;
+    char** arcFileBuffers;
 
-    FILE **gridFiles;
+    //FILE **gridFiles;
+    MPI_File *gridFiles;
     char gridFileName[1024];
+    MPI_Offset *gridFileOffsets;
+    char** gridFileBuffers;
+
+    int buffer_size = 1000000;
+
 
     const char *ext[6] = {".min", ".max", ".mean", ".idw", ".den", ".std"};
     unsigned int type[6] = {OUTPUT_TYPE_MIN, OUTPUT_TYPE_MAX, OUTPUT_TYPE_MEAN, OUTPUT_TYPE_IDW, OUTPUT_TYPE_DEN, OUTPUT_TYPE_STD};
@@ -583,11 +591,13 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
     // open ArcGIS files
     if(outputFormat == OUTPUT_FORMAT_ARC_ASCII || outputFormat == OUTPUT_FORMAT_ALL)
     {
-        if((arcFiles = (FILE **)malloc(sizeof(FILE *) *  numTypes)) == NULL)
+        if((arcFiles = (MPI_File *)malloc(sizeof(MPI_File) *  numTypes)) == NULL)
         {
-            cerr << "Arc File open error: " << endl;
+            cerr << "Arc MPI_File malloc error: " << endl;
             return -1;
         }
+        arcFileOffsets = (MPI_Offset *) = malloc(sizeof(MPI_Offset) * numTypes);
+        arcFileBuffers = (char **) malloc(sizeof(char *) * numTypes);
 
         for(i = 0; i < numTypes; i++)
         {
@@ -596,28 +606,41 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 strncpy(arcFileName, outputName, sizeof(arcFileName));
                 strncat(arcFileName, ext[i], strlen(ext[i]));
                 strncat(arcFileName, ".asc", strlen(".asc"));
-
-                if((arcFiles[i] = fopen(arcFileName, "w+")) == NULL)
+                if(rank == 0)
                 {
-                    cerr << "File open error: " << arcFileName << endl;
-                    return -1;
+                    unlink(arcFileName);
                 }
-            } else {
+                MPI_Barrier(MPI_COMM_WORLD);
+                MPI_File_open(MPI_COMM_WORLD, arcFileName, MPI_MODE_CREATE|MPI_MODE_WRONLY, MPI_INFO_NULL, &(arcFiles[i]));
+                arcFileBuffers[i] = (char *) malloc(sizeof(char) * buffer_size);
+
+                //if((arcFiles[i] = fopen(arcFileName, "w+")) == NULL)
+                //{
+                //    cerr << "File open error: " << arcFileName << endl;
+                //    return -1;
+                //}
+            }
+            else
+            {
                 arcFiles[i] = NULL;
             }
         }
-    } else {
+    }
+    else
+    {
         arcFiles = NULL;
     }
 
     // open Grid ASCII files
     if(outputFormat == OUTPUT_FORMAT_GRID_ASCII || outputFormat == OUTPUT_FORMAT_ALL)
     {
-        if((gridFiles = (FILE **)malloc(sizeof(FILE *) * numTypes)) == NULL)
+        if((gridFiles = (MPI_File *)malloc(sizeof(MPI_File) * numTypes)) == NULL)
         {
             cerr << "File array allocation error" << endl;
             return -1;
         }
+        gridFileOffsets = (MPI_Offset *) = malloc(sizeof(MPI_Offset) * numTypes);
+        gridFileBuffers = (char **) malloc(sizeof(char *) * numTypes);
 
         for(i = 0; i < numTypes; i++)
         {
@@ -626,55 +649,109 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 strncpy(gridFileName, outputName, sizeof(arcFileName));
                 strncat(gridFileName, ext[i], strlen(ext[i]));
                 strncat(gridFileName, ".grid", strlen(".grid"));
-
-                if((gridFiles[i] = fopen(gridFileName, "w+")) == NULL)
+                if (rank == 0)
                 {
-                    cerr << "File open error: " << gridFileName << endl;
-                    return -1;
+                    unlink (gridFileName);
                 }
-            } else {
+                MPI_Barrier (MPI_COMM_WORLD);
+                MPI_File_open (MPI_COMM_WORLD, gridFileName,
+                               MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL,
+                               &(gridFiles[i]));
+
+                gridFileBuffers[i] = (char *) malloc(sizeof(char) * buffer_size);
+                //if((gridFiles[i] = fopen(gridFileName, "w+")) == NULL)
+                //{
+                //    cerr << "File open error: " << gridFileName << endl;
+                //    return -1;
+                //}
+
+            }
+            else
+            {
                 gridFiles[i] = NULL;
             }
         }
-    } else {
+    }
+    else
+    {
         gridFiles = NULL;
     }
 
-    // print ArcGIS headers
-    if(arcFiles != NULL)
+
+
+    if (rank == 0)
     {
-        for(i = 0; i < numTypes; i++)
+        // print ArcGIS headers
+        if (arcFiles != NULL)
         {
-            if(arcFiles[i] != NULL)
+            for (i = 0; i < numTypes; i++)
             {
-                fprintf(arcFiles[i], "ncols %d\n", GRID_SIZE_X);
-                fprintf(arcFiles[i], "nrows %d\n", GRID_SIZE_Y);
-                fprintf(arcFiles[i], "xllcorner %f\n", min_x);
-                fprintf(arcFiles[i], "yllcorner %f\n", min_y);
-                fprintf(arcFiles[i], "cellsize %f\n", GRID_DIST_X);
-                fprintf(arcFiles[i], "NODATA_value -9999\n");
+                if (arcFiles[i] != NULL)
+                {
+                    fprintf (arcFiles[i], "ncols %d\n", GRID_SIZE_X);
+                    fprintf (arcFiles[i], "nrows %d\n", GRID_SIZE_Y);
+                    fprintf (arcFiles[i], "xllcorner %f\n", min_x);
+                    fprintf (arcFiles[i], "yllcorner %f\n", min_y);
+                    fprintf (arcFiles[i], "cellsize %f\n", GRID_DIST_X);
+                    fprintf (arcFiles[i], "NODATA_value -9999\n");
+                }
+                MPI_File_get_position(arcFiles[i], &(arcFileOffsets[i]);
             }
         }
-    }
 
-    // print Grid headers
-    if(gridFiles != NULL)
-    {
-        for(i = 0; i < numTypes; i++)
+        // print Grid headers
+        if (gridFiles != NULL)
         {
-            if(gridFiles[i] != NULL)
+            for (i = 0; i < numTypes; i++)
             {
-                fprintf(gridFiles[i], "north: %f\n", max_y);
-                fprintf(gridFiles[i], "south: %f\n", min_y);
-                fprintf(gridFiles[i], "east: %f\n", max_x);
-                fprintf(gridFiles[i], "west: %f\n", min_x);
-                fprintf(gridFiles[i], "rows: %d\n", GRID_SIZE_Y);
-                fprintf(gridFiles[i], "cols: %d\n", GRID_SIZE_X);
+                if (gridFiles[i] != NULL)
+                {
+                    fprintf (gridFiles[i], "north: %f\n", max_y);
+                    fprintf (gridFiles[i], "south: %f\n", min_y);
+                    fprintf (gridFiles[i], "east: %f\n", max_x);
+                    fprintf (gridFiles[i], "west: %f\n", min_x);
+                    fprintf (gridFiles[i], "rows: %d\n", GRID_SIZE_Y);
+                    fprintf (gridFiles[i], "cols: %d\n", GRID_SIZE_X);
+                }
+                MPI_File_get_position(gridFiles[i], &(gridFileOffsets[i]);
             }
         }
-    }
+    } // if(rank == 0)
 
-    // print data
+    MPI_Barrier (MPI_COMM_WORLD);
+
+    if (arcFiles != NULL)
+                {
+                    for (i = 0; i < numTypes; i++)
+                    {
+                        if (arcFiles[i] != NULL)
+                        {
+                            MPI_Bcast (&(arcFileOffsets[i]), 1, MPI_OFFSET, 0,
+                            MPI_COMM_WORLD)
+                        }
+                    }
+                }
+
+
+            if (gridFiles != NULL)
+            {
+                for (i = 0; i < numTypes; i++)
+                {
+                    if (gridFiles[i] != NULL)
+                    {
+                        MPI_Bcast (&(gridFileOffsets[i]), 1, MPI_OFFSET, 0,
+                        MPI_COMM_WORLD)
+                    }
+                }
+            }
+
+
+
+
+
+
+
+
     for(i = GRID_SIZE_Y - 1; i >= 0; i--)
     {
         for(j = 0; j < GRID_SIZE_X; j++)
