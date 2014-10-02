@@ -75,6 +75,12 @@ MpiInterp::MpiInterp(double dist_x, double dist_y,
     rank = _rank;
     process_count = _process_count;
     comm_done = 0;
+    mpi_reader_count = 1;
+    mpi_buffer_size = 1000000;
+    is_reader = 0;
+    is_writer = 0;
+    readers = (int *) malloc(sizeof(int)*process_count);
+    writers = (int *) malloc(sizeof(int)*process_count);
 
     GRID_DIST_X = dist_x;
     GRID_DIST_Y = dist_y;
@@ -102,56 +108,84 @@ MpiInterp::~MpiInterp()
 int MpiInterp::init()
 {
     int i, j;
-    row_stride = GRID_SIZE_Y / (process_count - 1);
-    if (rank != 0)
+    w_row_start_index = w_row_end_index = 0;
+    row_stride = GRID_SIZE_Y/(process_count-mpi_reader_count) + 1;
+
+    if(rank<mpi_reader_count)
     {
+        is_reader = 1;
+    }
 
-
-        w_row_start_index = (rank - 1) * row_stride;
-        w_row_end_index =   (rank * row_stride) - 1;
-        int left_over = GRID_SIZE_Y % (process_count - 1);
-        if (rank == process_count - 1)
+    if(rank >= mpi_reader_count)
+    {
+        w_row_start_index = (rank - mpi_reader_count) * row_stride;
+        w_row_end_index =   ((rank + 1) - mpi_reader_count) * row_stride -1;
+        if(w_row_start_index < GRID_SIZE_Y-1 && w_row_end_index <= GRID_SIZE_Y-1){
+            is_writer = 1;
+        }
+        else if(w_row_start_index < GRID_SIZE_Y-1 && w_row_end_index > GRID_SIZE_Y-1)
         {
-            w_row_end_index += left_over;
+            is_writer = 1;
+            w_row_end_index = GRID_SIZE_Y-1;
+        }
+        else
+        {
+            is_writer = w_row_start_index = w_row_start_index = 0;
+
         }
 
-
-        int row_count = w_row_end_index - w_row_start_index + 1;
-        interp = (GridPoint**) malloc (sizeof(GridPoint *) * row_count);
-        if (interp == NULL)
+        if (is_writer)
         {
-            cerr << "MpiInterp::init() malloc error" << endl;
-            return -1;
-        }
+            int row_count = w_row_end_index - w_row_start_index + 1;
+            interp = (GridPoint**) malloc (sizeof(GridPoint *) * row_count);
 
-        for (i = 0; i < row_count; i++)
-        {
-            interp[i] = (GridPoint *) malloc (sizeof(GridPoint) * GRID_SIZE_Y);
-            if (interp[i] == NULL)
+            //interp = (GridPoint**) malloc (sizeof(GridPoint *) * GRID_SIZE_Y);
+            if (interp == NULL)
             {
                 cerr << "MpiInterp::init() malloc error" << endl;
                 return -1;
             }
-        }
-
-        for (i = 0; i < row_count; i++)
-        {
-            for (j = 0; j < GRID_SIZE_X; j++)
+            //for (i = 0; i < row_count; i++)
+            for (i = 0; i < GRID_SIZE_Y; i++)
             {
-                interp[i][j].Zmin = DBL_MAX;
-                interp[i][j].Zmax = -DBL_MAX;
-                interp[i][j].Zmean = 0;
-                interp[i][j].count = 0;
-                interp[i][j].Zidw = 0;
-                interp[i][j].sum = 0;
-                interp[i][j].Zstd = 0;
-                interp[i][j].Zstd_tmp = 0;
-                interp[i][j].empty = 0;
-                interp[i][j].filled = 0;
+                interp[i] = (GridPoint *) malloc (
+                        sizeof(GridPoint) * GRID_SIZE_X);
+                if (interp[i] == NULL)
+                {
+                    cerr << "MpiInterp::init() malloc error" << endl;
+                    return -1;
+                }
+            }
+
+            for (i = 0; i < row_count; i++)
+            {
+                for (j = 0; j < GRID_SIZE_X; j++)
+                {
+                    interp[i][j].Zmin = DBL_MAX;
+                    interp[i][j].Zmax = -DBL_MAX;
+                    interp[i][j].Zmean = 0;
+                    interp[i][j].count = 0;
+                    interp[i][j].Zidw = 0;
+                    interp[i][j].sum = 0;
+                    interp[i][j].Zstd = 0;
+                    interp[i][j].Zstd_tmp = 0;
+                    interp[i][j].empty = 0;
+                    interp[i][j].filled = 0;
+                }
             }
         }
     }
-    cerr << "MpiInterp::init() done" << endl;
+    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Allgather(&is_reader, 1, MPI_INT, readers, 1, MPI_INT, MPI_COMM_WORLD);
+    MPI_Allgather(&is_writer, 1, MPI_INT, writers, 1, MPI_INT, MPI_COMM_WORLD);
+
+    //for(i=0; i<process_count; i++){
+    //    if(readers[i]) printf("reader, rank %i %i\n", i, rank);
+    //    if(writers[i]) printf("writer, rank %i %i\n", i, rank);
+    //}
+
+    printf("init done, w_row_start_index %i,  w_row_end_index %i, row_stride %i, GRID_SIZE_Y %i, GRID_SIZE_X %i, rank %i\n", w_row_start_index,w_row_end_index,row_stride,GRID_SIZE_Y,GRID_SIZE_X,rank );
+
     MPI_Barrier(MPI_COMM_WORLD);
     return 0;
 
@@ -206,9 +240,12 @@ int MpiInterp::finish(char *outputName, int outputFormat, unsigned int outputTyp
 
     //struct tms tbuf;
     clock_t t0, t1;
+    if(rank != 0)
+    {
 
-    for(i = 0; i < GRID_SIZE_X; i++)
-        for(j = 0; j < GRID_SIZE_Y; j++)
+    int row_count = w_row_end_index - w_row_start_index + 1;
+    for(i = 0; i < row_count; i++)
+        for(j = 0; j < GRID_SIZE_X; j++)
         {
             if(interp[i][j].Zmin == DBL_MAX) {
                 //		interp[i][j].Zmin = NAN;
@@ -299,7 +336,7 @@ int MpiInterp::finish(char *outputName, int outputFormat, unsigned int outputTyp
     t1 = clock();
 
     cerr << "Output Execution time: " << (double)(t1 - t0)/ CLOCKS_PER_SEC << std::endl;
-
+    } // if (rank != 0)
 
     return 0;
 }
@@ -336,7 +373,7 @@ void MpiInterp::update_first_quadrant(double data_z, int base_x, int base_y, dou
 
                 // update GridPoint
                 //printf("----------------------------i %i worker size x %i rank %i\n", i, GRID_STRIDE_X, rank);
-                int target_rank = get_target_rank(i);
+                int target_rank = get_target_rank(j);
                 //printf("----------------------------i %i worker size x %i rank %i\n", i, GRID_STRIDE_X, rank);
                 updateGridPointSend(target_rank, i, j, data_z, sqrt(distance));
 
@@ -370,7 +407,7 @@ void MpiInterp::update_second_quadrant(double data_z, int base_x, int base_y, do
             {
                 //printf("(%d %d) ", i, j);
                 //interp[i][j]++;
-                int target_rank = get_target_rank(i);
+                int target_rank = get_target_rank(j);
                 updateGridPointSend(target_rank, i, j, data_z, sqrt(distance));
 
 
@@ -402,7 +439,7 @@ void MpiInterp::update_third_quadrant(double data_z, int base_x, int base_y, dou
                 //if(j == 30)
                 //printf("(%d %d)\n", i, j);
                 //interp[i][j]++;
-                int target_rank = get_target_rank(i);
+                int target_rank = get_target_rank(j);
                 updateGridPointSend(target_rank, i, j, data_z, sqrt(distance));
             } else if(j == base_y) {
                 return;
@@ -428,7 +465,7 @@ void MpiInterp::update_fourth_quadrant(double data_z, int base_x, int base_y, do
             {
                 //printf("(%d %d) ", i, j);
                 //interp[i][j]++;
-                int target_rank = get_target_rank(i);
+                int target_rank = get_target_rank(j);
                 updateGridPointSend(target_rank, i, j, data_z, sqrt(distance));
             } else if (j == base_y) {
                 return ;
@@ -443,20 +480,15 @@ void MpiInterp::update_fourth_quadrant(double data_z, int base_x, int base_y, do
 // todo, modify reader_count to work with more than one reader
 
 int MpiInterp::get_target_rank(int row_index){
-    int reader_count = 1;
-    int rtn = row_index/row_stride + reader_count;
+
+    int rtn = row_index/row_stride + mpi_reader_count;
     if (rtn < process_count)
     {
         return rtn;
     }
-    else if (rtn == process_count  && row_index <= w_row_end_index)
-    {
-        return rtn - 1; // this handles the "left over" rows assigned to the last worker process
-    }
-
     else
     {
-        fprintf(stderr, "MpiInterp::get_target_rank: worker process overflow, logic error");
+        fprintf(stderr, "MpiInterp::get_target_rank: worker process overflow, logic error, row_index %i row stride %i, w_row_end_index %i, rank %i\n", row_index, row_stride, w_row_end_index, rank);
         return -1;
     }
 }
@@ -512,10 +544,26 @@ void MpiInterp::updateGridPointRecv()
 
 void MpiInterp::updateGridPoint(int x, int y, double data_z, double distance)
 {
+
+    static int count = -1;
+    if (count ==-1)count =1;
+    else count++;
+
+    //printf("update starts, rank %i, count %i\n", rank, count);
+    //printf ("updateGridPoint rank %i, x %i, y %i, count %i\n", rank, x, y, count);
+
     //todo update to work with more than one reader
     int reader_count = 1;
+
+
+
     y -= (rank-reader_count)*row_stride;
-    //printf ("rank %i, x %i, y %i, stride %i\n", rank, x, y, GRID_STRIDE_X);
+
+    if(x<0 || x>=GRID_SIZE_X|| y<0 || y>= (w_row_end_index - w_row_start_index + 1 ))
+    {
+        printf ("ERROR in updateGridPoint rank %i, x %i, y %i, count %i\n", rank, x, y, count);
+    }
+
 
 
     if(interp[x][y].Zmin > data_z)
@@ -544,6 +592,8 @@ void MpiInterp::updateGridPoint(int x, int y, double data_z, double distance)
     } else {
         // do nothing
     }
+
+   // printf("update ends, rank %i\n", rank);
 }
 
 void MpiInterp::printArray()
@@ -563,6 +613,11 @@ void MpiInterp::printArray()
     cerr << endl;
 }
 
+
+
+
+
+
 int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outputType, double *adfGeoTransform, const char* wkt)
 {
     int i,j,k;
@@ -570,17 +625,12 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
     //FILE **arcFiles;
     MPI_File *arcFiles;
     char arcFileName[1024];
-    MPI_Offset *arcFileOffsets;
-    char** arcFileBuffers;
 
-    //FILE **gridFiles;
     MPI_File *gridFiles;
     char gridFileName[1024];
-    MPI_Offset *gridFileOffsets;
-    char** gridFileBuffers;
 
-    int buffer_size = 1000000;
-
+    char buf[1024];
+    MPI_Status status;
 
     const char *ext[6] = {".min", ".max", ".mean", ".idw", ".den", ".std"};
     unsigned int type[6] = {OUTPUT_TYPE_MIN, OUTPUT_TYPE_MAX, OUTPUT_TYPE_MEAN, OUTPUT_TYPE_IDW, OUTPUT_TYPE_DEN, OUTPUT_TYPE_STD};
@@ -596,8 +646,10 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
             cerr << "Arc MPI_File malloc error: " << endl;
             return -1;
         }
-        arcFileOffsets = (MPI_Offset *) = malloc(sizeof(MPI_Offset) * numTypes);
-        arcFileBuffers = (char **) malloc(sizeof(char *) * numTypes);
+        arc_file_mpi_offset = (MPI_Offset *) malloc(sizeof(MPI_Offset) * numTypes);
+        arc_file_mpi_buffer = (char **) malloc(sizeof(char *) * numTypes);
+        arc_file_mpi_count =  (int *) malloc(sizeof(int) * numTypes);
+        arc_file_mpi_size =  (unsigned int *) malloc(sizeof(unsigned int) * numTypes);
 
         for(i = 0; i < numTypes; i++)
         {
@@ -606,19 +658,12 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 strncpy(arcFileName, outputName, sizeof(arcFileName));
                 strncat(arcFileName, ext[i], strlen(ext[i]));
                 strncat(arcFileName, ".asc", strlen(".asc"));
-                if(rank == 0)
-                {
-                    unlink(arcFileName);
-                }
-                MPI_Barrier(MPI_COMM_WORLD);
                 MPI_File_open(MPI_COMM_WORLD, arcFileName, MPI_MODE_CREATE|MPI_MODE_WRONLY, MPI_INFO_NULL, &(arcFiles[i]));
-                arcFileBuffers[i] = (char *) malloc(sizeof(char) * buffer_size);
-
-                //if((arcFiles[i] = fopen(arcFileName, "w+")) == NULL)
-                //{
-                //    cerr << "File open error: " << arcFileName << endl;
-                //    return -1;
-                //}
+                MPI_File_set_size(arcFiles[i], 0);
+                arc_file_mpi_offset[i] = 0;
+                arc_file_mpi_buffer[i] = (char *) malloc(sizeof(char) * mpi_buffer_size);
+                arc_file_mpi_count[i] = 0;
+                arc_file_mpi_size[i] = 0;
             }
             else
             {
@@ -639,8 +684,10 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
             cerr << "File array allocation error" << endl;
             return -1;
         }
-        gridFileOffsets = (MPI_Offset *) = malloc(sizeof(MPI_Offset) * numTypes);
-        gridFileBuffers = (char **) malloc(sizeof(char *) * numTypes);
+        grid_file_mpi_offset = (MPI_Offset *) malloc(sizeof(MPI_Offset) * numTypes);
+        grid_file_mpi_buffer = (char **) malloc(sizeof(char *) * numTypes);
+        grid_file_mpi_count =  (int *) malloc(sizeof(int) * numTypes);
+        grid_file_mpi_size =  (unsigned int *) malloc(sizeof(unsigned int) * numTypes);
 
         for(i = 0; i < numTypes; i++)
         {
@@ -649,22 +696,15 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 strncpy(gridFileName, outputName, sizeof(arcFileName));
                 strncat(gridFileName, ext[i], strlen(ext[i]));
                 strncat(gridFileName, ".grid", strlen(".grid"));
-                if (rank == 0)
-                {
-                    unlink (gridFileName);
-                }
-                MPI_Barrier (MPI_COMM_WORLD);
+
                 MPI_File_open (MPI_COMM_WORLD, gridFileName,
                                MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL,
                                &(gridFiles[i]));
-
-                gridFileBuffers[i] = (char *) malloc(sizeof(char) * buffer_size);
-                //if((gridFiles[i] = fopen(gridFileName, "w+")) == NULL)
-                //{
-                //    cerr << "File open error: " << gridFileName << endl;
-                //    return -1;
-                //}
-
+                MPI_File_set_size(gridFiles[i], 0);
+                grid_file_mpi_offset[i] = 0;
+                grid_file_mpi_buffer[i] = (char *) malloc(sizeof(char) * mpi_buffer_size);
+                grid_file_mpi_count[i] = 0;
+                grid_file_mpi_size[i] = 0;
             }
             else
             {
@@ -676,7 +716,7 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
     {
         gridFiles = NULL;
     }
-
+    MPI_Barrier (MPI_COMM_WORLD);
 
 
     if (rank == 0)
@@ -688,14 +728,20 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
             {
                 if (arcFiles[i] != NULL)
                 {
-                    fprintf (arcFiles[i], "ncols %d\n", GRID_SIZE_X);
-                    fprintf (arcFiles[i], "nrows %d\n", GRID_SIZE_Y);
-                    fprintf (arcFiles[i], "xllcorner %f\n", min_x);
-                    fprintf (arcFiles[i], "yllcorner %f\n", min_y);
-                    fprintf (arcFiles[i], "cellsize %f\n", GRID_DIST_X);
-                    fprintf (arcFiles[i], "NODATA_value -9999\n");
+                    sprintf (buf, "ncols %d\n", GRID_SIZE_X);
+                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    sprintf (buf, "nrows %d\n", GRID_SIZE_Y);
+                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    sprintf (buf, "xllcorner %f\n", min_x);
+                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    sprintf (buf, "yllcorner %f\n", min_y);
+                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    sprintf (buf, "cellsize %f\n", GRID_DIST_X);
+                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    sprintf (buf, "NODATA_value -9999\n");
+                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
                 }
-                MPI_File_get_position(arcFiles[i], &(arcFileOffsets[i]);
+                MPI_File_get_position(arcFiles[i], &(arc_file_mpi_offset[i]));
             }
         }
 
@@ -706,14 +752,20 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
             {
                 if (gridFiles[i] != NULL)
                 {
-                    fprintf (gridFiles[i], "north: %f\n", max_y);
-                    fprintf (gridFiles[i], "south: %f\n", min_y);
-                    fprintf (gridFiles[i], "east: %f\n", max_x);
-                    fprintf (gridFiles[i], "west: %f\n", min_x);
-                    fprintf (gridFiles[i], "rows: %d\n", GRID_SIZE_Y);
-                    fprintf (gridFiles[i], "cols: %d\n", GRID_SIZE_X);
+                    sprintf (buf, "north: %f\n", max_y);
+                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    sprintf (buf, "south: %f\n", min_y);
+                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    sprintf (buf, "east: %f\n", max_x);
+                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    sprintf (buf, "west: %f\n", min_x);
+                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    sprintf (buf, "rows: %d\n", GRID_SIZE_Y);
+                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    sprintf (buf, "cols: %d\n", GRID_SIZE_X);
+                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
                 }
-                MPI_File_get_position(gridFiles[i], &(gridFileOffsets[i]);
+                MPI_File_get_position(gridFiles[i], &(grid_file_mpi_offset[i]));
             }
         }
     } // if(rank == 0)
@@ -721,38 +773,73 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
     MPI_Barrier (MPI_COMM_WORLD);
 
     if (arcFiles != NULL)
-                {
-                    for (i = 0; i < numTypes; i++)
-                    {
-                        if (arcFiles[i] != NULL)
-                        {
-                            MPI_Bcast (&(arcFileOffsets[i]), 1, MPI_OFFSET, 0,
-                            MPI_COMM_WORLD)
-                        }
-                    }
-                }
-
-
-            if (gridFiles != NULL)
+    {
+        for (i = 0; i < numTypes; i++)
+        {
+            if (arcFiles[i] != NULL)
             {
-                for (i = 0; i < numTypes; i++)
-                {
-                    if (gridFiles[i] != NULL)
-                    {
-                        MPI_Bcast (&(gridFileOffsets[i]), 1, MPI_OFFSET, 0,
-                        MPI_COMM_WORLD)
-                    }
-                }
+                MPI_Bcast (&(arc_file_mpi_offset[i]), 1, MPI_OFFSET, 0, MPI_COMM_WORLD);
             }
+        }
+    }
 
+    if (gridFiles != NULL)
+    {
+        for (i = 0; i < numTypes; i++)
+        {
+            if (gridFiles[i] != NULL)
+            {
+                MPI_Bcast (&(grid_file_mpi_offset[i]), 1, MPI_OFFSET, 0, MPI_COMM_WORLD);
+            }
+        }
+    }
 
+    MPI_Barrier (MPI_COMM_WORLD);
 
+    if (arcFiles != NULL)
+    {
+        for (i = 0; i < numTypes; i++)
+        {
+            if (arcFiles[i] != NULL)
+            {
+                MPI_File_seek (arcFiles[i], arc_file_mpi_offset[i],
+                               MPI_SEEK_SET);
+            }
+        }
+    }
 
+    if (gridFiles != NULL)
+    {
+        for (i = 0; i < numTypes; i++)
+        {
+            if (gridFiles[i] != NULL)
+            {
+                MPI_File_seek (gridFiles[i], grid_file_mpi_offset[i],
+                               MPI_SEEK_SET);
+            }
+        }
+    }
 
+    if(rank > mpi_reader_count - 1)
+    {
+    //**************************** Loop 1, calculate total write size for each worker and set file offset *********
+    // initialize mpi_size for each file
+    if (arcFiles != NULL)
+        for (k = 0; k < numTypes; k++)
+        {
+            if (arcFiles[k] != NULL)
+                arc_file_mpi_size[k] += 0;
+        }
+    if (gridFiles != NULL)
+        for (k = 0; k < numTypes; k++)
+        {
+            if (gridFiles[k] != NULL)
+                arc_file_mpi_size[k] += 0;
+        }
 
-
-
-    for(i = GRID_SIZE_Y - 1; i >= 0; i--)
+    // add up the write size for all files for this worker
+    int row_count = w_row_end_index - w_row_start_index + 1;
+    for(i = 0; i < row_count; i++)
     {
         for(j = 0; j < GRID_SIZE_X; j++)
         {
@@ -761,61 +848,61 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 // Zmin
                 if(arcFiles[0] != NULL)
                 {
-                    if(interp[j][i].empty == 0 &&
-                            interp[j][i].filled == 0)
-                        fprintf(arcFiles[0], "-9999 ");
+                    if(interp[i][j].empty == 0 &&
+                            interp[i][j].filled == 0)
+                        arc_file_mpi_size[0] += sprintf(buf, "-9999 ");
                     else
-                        fprintf(arcFiles[0], "%f ", interp[j][i].Zmin);
+                        arc_file_mpi_size[0] += sprintf(buf, "%f ", interp[i][j].Zmin);
                 }
 
                 // Zmax
                 if(arcFiles[1] != NULL)
                 {
-                    if(interp[j][i].empty == 0 &&
-                            interp[j][i].filled == 0)
-                        fprintf(arcFiles[1], "-9999 ");
+                    if(interp[i][j].empty == 0 &&
+                            interp[i][j].filled == 0)
+                        arc_file_mpi_size[1] += sprintf(buf, "-9999 ");
                     else
-                        fprintf(arcFiles[1], "%f ", interp[j][i].Zmax);
+                        arc_file_mpi_size[1] += sprintf(buf, "%f ", interp[i][j].Zmax);
                 }
 
                 // Zmean
                 if(arcFiles[2] != NULL)
                 {
-                    if(interp[j][i].empty == 0 &&
-                            interp[j][i].filled == 0)
-                        fprintf(arcFiles[2], "-9999 ");
+                    if(interp[i][j].empty == 0 &&
+                            interp[i][j].filled == 0)
+                        arc_file_mpi_size[2] += sprintf(buf, "-9999 ");
                     else
-                        fprintf(arcFiles[2], "%f ", interp[j][i].Zmean);
+                        arc_file_mpi_size[2] += sprintf(buf, "%f ", interp[i][j].Zmean);
                 }
 
                 // Zidw
                 if(arcFiles[3] != NULL)
                 {
-                    if(interp[j][i].empty == 0 &&
-                            interp[j][i].filled == 0)
-                        fprintf(arcFiles[3], "-9999 ");
+                    if(interp[i][j].empty == 0 &&
+                            interp[i][j].filled == 0)
+                        arc_file_mpi_size[3] += sprintf(buf, "-9999 ");
                     else
-                        fprintf(arcFiles[3], "%f ", interp[j][i].Zidw);
+                        arc_file_mpi_size[3] += sprintf(buf, "%f ", interp[i][j].Zidw);
                 }
 
                 // count
                 if(arcFiles[4] != NULL)
                 {
-                    if(interp[j][i].empty == 0 &&
-                            interp[j][i].filled == 0)
-                        fprintf(arcFiles[4], "-9999 ");
+                    if(interp[i][j].empty == 0 &&
+                            interp[i][j].filled == 0)
+                        arc_file_mpi_size[4] += sprintf(buf, "-9999 ");
                     else
-                        fprintf(arcFiles[4], "%d ", interp[j][i].count);
+                        arc_file_mpi_size[4] += sprintf(buf, "%d ", interp[i][j].count);
                 }
 
 		// count
                 if(arcFiles[5] != NULL)
                 {
-                    if(interp[j][i].empty == 0 &&
-                            interp[j][i].filled == 0)
-                        fprintf(arcFiles[5], "-9999 ");
+                    if(interp[i][j].empty == 0 &&
+                            interp[i][j].filled == 0)
+                        arc_file_mpi_size[5] += sprintf(buf, "-9999 ");
                     else
-                        fprintf(arcFiles[5], "%f ", interp[j][i].Zstd);
+                        arc_file_mpi_size[5] += sprintf(buf, "%f ", interp[i][j].Zstd);
                 }
 	    }
 
@@ -824,61 +911,61 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 // Zmin
                 if(gridFiles[0] != NULL)
                 {
-                    if(interp[j][i].empty == 0 &&
-                            interp[j][i].filled == 0)
-                        fprintf(gridFiles[0], "-9999 ");
+                    if(interp[i][j].empty == 0 &&
+                            interp[i][j].filled == 0)
+                        arc_file_mpi_size[0] += sprintf(buf, "-9999 ");
                     else
-                        fprintf(gridFiles[0], "%f ", interp[j][i].Zmin);
+                        arc_file_mpi_size[0] += sprintf(buf, "%f ", interp[i][j].Zmin);
                 }
 
                 // Zmax
                 if(gridFiles[1] != NULL)
                 {
-                    if(interp[j][i].empty == 0 &&
-                            interp[j][i].filled == 0)
-                        fprintf(gridFiles[1], "-9999 ");
+                    if(interp[i][j].empty == 0 &&
+                            interp[i][j].filled == 0)
+                        arc_file_mpi_size[1] += sprintf(buf, "-9999 ");
                     else
-                        fprintf(gridFiles[1], "%f ", interp[j][i].Zmax);
+                        arc_file_mpi_size[1] += sprintf(buf, "%f ", interp[i][j].Zmax);
                 }
 
                 // Zmean
                 if(gridFiles[2] != NULL)
                 {
-                    if(interp[j][i].empty == 0 &&
-                            interp[j][i].filled == 0)
-                        fprintf(gridFiles[2], "-9999 ");
+                    if(interp[i][j].empty == 0 &&
+                            interp[i][j].filled == 0)
+                        arc_file_mpi_size[2] += sprintf(buf, "-9999 ");
                     else
-                        fprintf(gridFiles[2], "%f ", interp[j][i].Zmean);
+                        arc_file_mpi_size[2] += sprintf(buf, "%f ", interp[i][j].Zmean);
                 }
 
                 // Zidw
                 if(gridFiles[3] != NULL)
                 {
-                    if(interp[j][i].empty == 0 &&
-                            interp[j][i].filled == 0)
-                        fprintf(gridFiles[3], "-9999 ");
+                    if(interp[i][j].empty == 0 &&
+                            interp[i][j].filled == 0)
+                        arc_file_mpi_size[3] += sprintf(buf, "-9999 ");
                     else
-                        fprintf(gridFiles[3], "%f ", interp[j][i].Zidw);
+                        arc_file_mpi_size[3] += sprintf(buf, "%f ", interp[i][j].Zidw);
                 }
 
                 // count
                 if(gridFiles[4] != NULL)
                 {
-                    if(interp[j][i].empty == 0 &&
-                            interp[j][i].filled == 0)
-                        fprintf(gridFiles[4], "-9999 ");
+                    if(interp[i][j].empty == 0 &&
+                            interp[i][j].filled == 0)
+                        arc_file_mpi_size[4] += sprintf(buf, "-9999 ");
                     else
-                        fprintf(gridFiles[4], "%d ", interp[j][i].count);
+                        arc_file_mpi_size[4] += sprintf(buf, "%d ", interp[i][j].count);
 		}
 
                 // count
                 if(gridFiles[5] != NULL)
                 {
-                    if(interp[j][i].empty == 0 &&
-                            interp[j][i].filled == 0)
-                        fprintf(gridFiles[5], "-9999 ");
+                    if(interp[i][j].empty == 0 &&
+                            interp[i][j].filled == 0)
+                        arc_file_mpi_size[5] += sprintf(buf, "-9999 ");
                     else
-                        fprintf(gridFiles[5], "%f ", interp[j][i].Zstd);
+                        arc_file_mpi_size[5] += sprintf(buf, "%f ", interp[i][j].Zstd);
                 }
             }
         }
@@ -886,15 +973,23 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
             for(k = 0; k < numTypes; k++)
             {
                 if(arcFiles[k] != NULL)
-                    fprintf(arcFiles[k], "\n");
+                    arc_file_mpi_size[k] += sprintf(buf, "\n");
             }
         if(gridFiles != NULL)
             for(k = 0; k < numTypes; k++)
             {
                 if(gridFiles[k] != NULL)
-                    fprintf(gridFiles[k], "\n");
+                    arc_file_mpi_size[k] += sprintf(buf, "\n");
             }
     }
+    // Gather, calculate, and set each worker's offset
+
+
+
+
+
+
+    } // end if(rank > reader_count -1)
 
 #ifdef HAVE_GDAL
     GDALDataset **gdalFiles;
@@ -1015,23 +1110,26 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
 #endif // HAVE_GDAL
 
     // close files
+
+    if (arcFiles != NULL)
+    {
+        for (i = 0; i < numTypes; i++)
+        {
+            if (arcFiles[i] != NULL)
+                MPI_File_close (&(arcFiles[i]));
+        }
+    }
+
     if(gridFiles != NULL)
     {
         for(i = 0; i < numTypes; i++)
         {
             if(gridFiles[i] != NULL)
-                fclose(gridFiles[i]);
+                MPI_File_close(&(gridFiles[i]));
         }
     }
 
-    if(arcFiles != NULL)
-    {
-        for(i = 0; i < numTypes; i++)
-        {
-            if(arcFiles[i] != NULL)
-                fclose(arcFiles[i]);
-        }
-    }
+
 
     return 0;
 }

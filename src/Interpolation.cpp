@@ -120,7 +120,7 @@ int Interpolation::init(char *inputName, int inputFormat)
         return -1;
     }
 
-    printf("inputName: '%s'\n", inputName);
+    //printf("inputName: '%s'\n", inputName);
 
     if (inputFormat == INPUT_ASCII) {
         FILE *fp;
@@ -150,40 +150,6 @@ int Interpolation::init(char *inputName, int inputFormat)
 
             data_count++;
 
-
-            /*
-            // tokenizing
-            string strLine(line);
-
-            // first token
-            string::size_type pos = strLine.find_first_of(",",0);
-            string::size_type lastPos = strLine.find_first_not_of(",",0);
-
-            string strX = strLine.substr(lastPos, pos - lastPos);
-
-            // second token
-            lastPos = strLine.find_first_not_of(",", pos);
-            pos = strLine.find_first_of(",", lastPos);
-
-            string strY = strLine.substr(lastPos, pos - lastPos);
-
-            // third token
-            lastPos = strLine.find_first_not_of(",", pos);
-            pos = strLine.find_first_of("\n", lastPos);
-
-            string strZ = strLine.substr(lastPos, pos - lastPos);
-
-            // data conversion
-            arrX[data_count] = atof(strX.c_str());
-            if(min_x > arrX[data_count]) min_x = arrX[data_count];
-            if(max_x < arrX[data_count]) max_x = arrX[data_count];
-
-            arrY[data_count] = atof(strY.c_str());
-            if(min_y > arrY[data_count]) min_y = arrY[data_count];
-            if(max_y < arrY[data_count]) max_y = arrY[data_count];
-
-            arrZ[data_count++] = atof(strZ.c_str());
-            */
         }
 
         fclose(fp);
@@ -204,7 +170,7 @@ int Interpolation::init(char *inputName, int inputFormat)
     }
 
     t1 = clock();
-    printf("Min/Max searching time: %10.2f\n", (double)(t1 - t0)/CLOCKS_PER_SEC);
+    //printf("Min/Max searching time: %10.2f\n", (double)(t1 - t0)/CLOCKS_PER_SEC);
 
 
     //t0 = times(&tbuf);
@@ -212,16 +178,8 @@ int Interpolation::init(char *inputName, int inputFormat)
     //////////////////////////////////////////////////////////////////////
     // Intialization Step excluding min/max searching
     //////////////////////////////////////////////////////////////////////
-    /*
-      for(i = 0; i < data_count; i++)
-      {
-      arrX[i] -= min_x;
-      arrY[i] -= min_y;
-      //printf("%f,%f,%f\n", arrX[i] , arrY[i] ,arrZ[i]);
-      }
-    */
 
-    cerr << "min_x: " << min_x << ", max_x: " << max_x << ", min_y: " << min_y << ", max_y: " << max_y << endl;
+    //cerr << "min_x: " << min_x << ", max_x: " << max_x << ", min_y: " << min_y << ", max_y: " << max_y << endl;
 
     GRID_SIZE_X = (int)(ceil((max_x - min_x)/GRID_DIST_X)) + 1;
     GRID_SIZE_Y = (int)(ceil((max_y - min_y)/GRID_DIST_Y)) + 1;
@@ -270,7 +228,7 @@ int Interpolation::init(char *inputName, int inputFormat)
         return -1;
     }
 
-    cerr << "Interpolation::init() done successfully" << endl;
+    //cerr << "Interpolation::init() done successfully" << endl;
 
     return 0;
 }
@@ -289,7 +247,7 @@ int Interpolation::interpolation(char *inputName,
     //struct tms tbuf;
     //clock_t t0, t1;
 
-    printf("Interpolation Starts\n");
+    printf("Interpolation Starts, rank %i\n", rank);
 
     //t0 = times(&tbuf);
 
@@ -341,7 +299,7 @@ int Interpolation::interpolation(char *inputName,
     { // input format is LAS
 
         
-        if (rank == 0)
+        if (interp->getIsReader())
         {
             las_file las;
             las.open (inputName);
@@ -356,7 +314,8 @@ int Interpolation::interpolation(char *inputName,
 
                 data_x -= min_x;
                 data_y -= min_y;
-
+                //
+                //cerr << "calling update rank "<< rank << endl;
                 if ((rc = interp->update (data_x, data_y, data_z)) < 0)
                 {
                     cerr << "interp->update() error while processing " << endl;
@@ -365,18 +324,23 @@ int Interpolation::interpolation(char *inputName,
                 index++;
             }
             interp->comm_done = 1;
-            int i;
-            for(i=1; i<process_count; i++)
+            if (process_count > 1)
             {
-                interp->updateGridPointSend(i,1,1,1,1);
+                int i;
+                for (i = 1; i < process_count; i++)
+                {
+                    if(interp->getWriters()[i])
+                    {
+                        interp->updateGridPointSend (i, 1, 1, 1, 1);
+                    }
+                }
             }
         }
-        else // rank is a worker
+        else if (interp->getIsWriter())// rank is a writer
         {
             interp->updateGridPointRecv();
         }
         
-        //MPI_Barrier(MPI_COMM_WORLD);
 
     }
 /*
@@ -386,7 +350,7 @@ int Interpolation::interpolation(char *inputName,
         return -1;
     }
 */
-    cerr << "Interpolation::interpolation() done successfully" << endl;
+    cerr << "Interpolation::interpolation() done successfully, rank " << rank << endl;
 
     return 0;
 }

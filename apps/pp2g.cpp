@@ -412,12 +412,12 @@ int main(int argc, char **argv)
     }
 
     t1 = clock();
-    printf("DEM generation + Output time: %10.2f\n", (double)(t1 - t0)/CLOCKS_PER_SEC);
+    //printf("DEM generation + Output time: %10.2f\n", (double)(t1 - t0)/CLOCKS_PER_SEC);
 
     printf("# of data: %d\n", ip->getDataCount());
     printf("dimension: %d x %d\n", ip->getGridSizeX(), ip->getGridSizeY());
 
-    delete ip;
+    //delete ip;
     MPI_Finalize();
     return 0;
 }

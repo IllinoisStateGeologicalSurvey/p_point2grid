@@ -2,7 +2,7 @@
 IDIR =./include
 CC=mpic++
 #CFLAGS=-I$(IDIR) -I/usr/include/gdal 
-CFLAGS=-I$(IDIR)
+CFLAGS=-I$(IDIR) -g
 ADIR=./apps
 SDIR=./src
 
@@ -43,4 +43,4 @@ $(ODIR)/%.o: $(SDIR)/%.cpp
 .PHONY: clean
 
 clean:
-	rm -f $(ODIR)/*.o ./.depend pp2p
+	rm -f $(ODIR)/*.o ./.depend pp2p core
