@@ -139,14 +139,12 @@ int MpiInterp::init()
             int row_count = w_row_end_index - w_row_start_index + 1;
             interp = (GridPoint**) malloc (sizeof(GridPoint *) * row_count);
 
-            //interp = (GridPoint**) malloc (sizeof(GridPoint *) * GRID_SIZE_Y);
             if (interp == NULL)
             {
                 cerr << "MpiInterp::init() malloc error" << endl;
                 return -1;
             }
-            //for (i = 0; i < row_count; i++)
-            for (i = 0; i < GRID_SIZE_Y; i++)
+            for (i = 0; i < row_count; i++)
             {
                 interp[i] = (GridPoint *) malloc (
                         sizeof(GridPoint) * GRID_SIZE_X);
@@ -237,95 +235,147 @@ int MpiInterp::finish(char *outputName, int outputFormat, unsigned int outputTyp
 {
     int rc;
     int i,j;
+    MPI_Barrier(MPI_COMM_WORLD);
+    printf("finish starts, rank %i\n", rank);
+
 
     //struct tms tbuf;
     clock_t t0, t1;
-    if(rank != 0)
+    if (is_writer)
     {
-
-    int row_count = w_row_end_index - w_row_start_index + 1;
-    for(i = 0; i < row_count; i++)
-        for(j = 0; j < GRID_SIZE_X; j++)
+        int row_count = w_row_end_index - w_row_start_index + 1;
+        for (i = 0; i < row_count; i++)
         {
-            if(interp[i][j].Zmin == DBL_MAX) {
-                //		interp[i][j].Zmin = NAN;
-                interp[i][j].Zmin = 0;
-            }
+            for (j = 0; j < GRID_SIZE_X; j++)
+            {
+                if (interp[i][j].Zmin == DBL_MAX)
+                {
+                    //		interp[i][j].Zmin = NAN;
+                    interp[i][j].Zmin = 0;
+                }
 
-            if(interp[i][j].Zmax == -DBL_MAX) {
-                //interp[i][j].Zmax = NAN;
-                interp[i][j].Zmax = 0;
-            }
+                if (interp[i][j].Zmax == -DBL_MAX)
+                {
+                    //interp[i][j].Zmax = NAN;
+                    interp[i][j].Zmax = 0;
+                }
 
-            if(interp[i][j].count != 0) {
-                interp[i][j].Zmean /= interp[i][j].count;
-                interp[i][j].empty = 1;
-            } else {
-                //interp[i][j].Zmean = NAN;
-                interp[i][j].Zmean = 0;
-            }
+                if (interp[i][j].count != 0)
+                {
+                    interp[i][j].Zmean /= interp[i][j].count;
+                    interp[i][j].empty = 1;
+                }
+                else
+                {
+                    //interp[i][j].Zmean = NAN;
+                    interp[i][j].Zmean = 0;
+                }
 
-	    // https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Online_algorithm
-            if(interp[i][j].count != 0) {
-  	        interp[i][j].Zstd = interp[i][j].Zstd / (interp[i][j].count);
-		interp[i][j].Zstd = sqrt(interp[i][j].Zstd);
-	    } else {
-                interp[i][j].Zstd = 0;
-            }
+                // https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Online_algorithm
+                if (interp[i][j].count != 0)
+                {
+                    interp[i][j].Zstd = interp[i][j].Zstd
+                            / (interp[i][j].count);
+                    interp[i][j].Zstd = sqrt (interp[i][j].Zstd);
+                }
+                else
+                {
+                    interp[i][j].Zstd = 0;
+                }
 
-
-            if(interp[i][j].sum != 0 && interp[i][j].sum != -1)
-                interp[i][j].Zidw /= interp[i][j].sum;
-            else if (interp[i][j].sum == -1) {
-                // do nothing
-            } else {
-                //interp[i][j].Zidw = NAN;
-                interp[i][j].Zidw = 0;
+                if (interp[i][j].sum != 0 && interp[i][j].sum != -1)
+                    interp[i][j].Zidw /= interp[i][j].sum;
+                else if (interp[i][j].sum == -1)
+                {
+                    // do nothing
+                }
+                else
+                {
+                    //interp[i][j].Zidw = NAN;
+                    interp[i][j].Zidw = 0;
+                }
             }
         }
+        // Sriram's edit: Fill zeros using the window size parameter
+        // todo, fix this to work with cells that reference other cells in other writers
+        /*
+        if (window_size != 0)
+        {
+            int window_dist = window_size / 2;
+            for (int i = 0; i < GRID_SIZE_X; i++)
+                for (int j = 0; j < GRID_SIZE_Y; j++)
+                {
+                    if (interp[i][j].empty == 0)
+                    {
+                        double new_sum = 0.0;
+                        for (int p = i - window_dist; p <= i + window_dist; p++)
+                        {
+                            for (int q = j - window_dist; q <= j + window_dist;
+                                    q++)
+                            {
+                                if ((p >= 0) && (p < GRID_SIZE_X) && (q >= 0)
+                                        && (q < GRID_SIZE_Y))
+                                {
+                                    if ((p == i) && (q == j))
+                                        continue;
 
-    // Sriram's edit: Fill zeros using the window size parameter
-    if (window_size != 0) {
-        int window_dist = window_size / 2;
-        for (int i = 0; i < GRID_SIZE_X; i++)
-            for (int j = 0; j < GRID_SIZE_Y; j++)
-            {
-                if (interp[i][j].empty == 0) {
-                    double new_sum=0.0;
-                    for (int p = i - window_dist; p <= i + window_dist; p++) {
-                        for (int q = j - window_dist; q <= j + window_dist; q++) {
-                            if ((p >= 0) && (p < GRID_SIZE_X) && (q >=0) && (q < GRID_SIZE_Y)) {
-                                if ((p == i) && (q == j))
-                                    continue;
+                                    if (interp[p][q].empty != 0)
+                                    {
+                                        double distance = max (abs (p - i),
+                                                               abs (q - j));
+                                        interp[i][j].Zmean +=
+                                                interp[p][q].Zmean
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                        interp[i][j].Zidw +=
+                                                interp[p][q].Zidw
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                        interp[i][j].Zstd +=
+                                                interp[p][q].Zstd
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                        interp[i][j].Zstd_tmp +=
+                                                interp[p][q].Zstd_tmp
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                        interp[i][j].Zmin +=
+                                                interp[p][q].Zmin
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                        interp[i][j].Zmax +=
+                                                interp[p][q].Zmax
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
 
-                                if (interp[p][q].empty != 0) {
-                                    double distance = max(abs(p-i), abs(q-j));
-                                    interp[i][j].Zmean += interp[p][q].Zmean/(pow(distance,Interpolation::WEIGHTER));
-                                    interp[i][j].Zidw += interp[p][q].Zidw/(pow(distance,Interpolation::WEIGHTER));
-				    interp[i][j].Zstd += interp[p][q].Zstd/(pow(distance,Interpolation::WEIGHTER));
-				    interp[i][j].Zstd_tmp += interp[p][q].Zstd_tmp/(pow(distance,Interpolation::WEIGHTER));
-                                    interp[i][j].Zmin += interp[p][q].Zmin/(pow(distance,Interpolation::WEIGHTER));
-                                    interp[i][j].Zmax += interp[p][q].Zmax/(pow(distance,Interpolation::WEIGHTER));
-
-                                    new_sum += 1/(pow(distance,Interpolation::WEIGHTER));
+                                        new_sum +=
+                                                1
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                    }
                                 }
                             }
                         }
-                    }
-                    if (new_sum > 0) {
-                        interp[i][j].Zmean /= new_sum;
-                        interp[i][j].Zidw /= new_sum;
-                        interp[i][j].Zstd /= new_sum;
-                        interp[i][j].Zstd_tmp /= new_sum;
-                        interp[i][j].Zmin /= new_sum;
-                        interp[i][j].Zmax /= new_sum;
-                        interp[i][j].filled = 1;
+                        if (new_sum > 0)
+                        {
+                            interp[i][j].Zmean /= new_sum;
+                            interp[i][j].Zidw /= new_sum;
+                            interp[i][j].Zstd /= new_sum;
+                            interp[i][j].Zstd_tmp /= new_sum;
+                            interp[i][j].Zmin /= new_sum;
+                            interp[i][j].Zmax /= new_sum;
+                            interp[i][j].filled = 1;
+                        }
                     }
                 }
-            }
-    }
+        }
+    */
+    } //if(is_writer)
+    t0 = clock ();
+    MPI_Barrier (MPI_COMM_WORLD);
+    printf ("finish ends, rank %i\n", rank);
+    MPI_Barrier (MPI_COMM_WORLD);
 
-    t0 = clock();
 
     if((rc = outputFile(outputName, outputFormat, outputType, adfGeoTransform, wkt)) < 0)
     {
@@ -336,7 +386,6 @@ int MpiInterp::finish(char *outputName, int outputFormat, unsigned int outputTyp
     t1 = clock();
 
     cerr << "Output Execution time: " << (double)(t1 - t0)/ CLOCKS_PER_SEC << std::endl;
-    } // if (rank != 0)
 
     return 0;
 }
@@ -545,49 +594,47 @@ void MpiInterp::updateGridPointRecv()
 void MpiInterp::updateGridPoint(int x, int y, double data_z, double distance)
 {
 
-    static int count = -1;
-    if (count ==-1)count =1;
-    else count++;
+    //static int count = -1;
+    //if (count ==-1)count =1;
+    //else count++;
 
     //printf("update starts, rank %i, count %i\n", rank, count);
     //printf ("updateGridPoint rank %i, x %i, y %i, count %i\n", rank, x, y, count);
 
     //todo update to work with more than one reader
-    int reader_count = 1;
+    //int reader_count = 1;
 
-
-
-    y -= (rank-reader_count)*row_stride;
+    y -= (rank-mpi_reader_count)*row_stride;
 
     if(x<0 || x>=GRID_SIZE_X|| y<0 || y>= (w_row_end_index - w_row_start_index + 1 ))
     {
-        printf ("ERROR in updateGridPoint rank %i, x %i, y %i, count %i\n", rank, x, y, count);
+        printf ("ERROR in updateGridPoint rank %i, y %i, x %i\n", rank, y, x);
     }
 
 
 
-    if(interp[x][y].Zmin > data_z)
-        interp[x][y].Zmin = data_z;
-    if(interp[x][y].Zmax < data_z)
-        interp[x][y].Zmax = data_z;
+    if(interp[y][x].Zmin > data_z)
+        interp[y][x].Zmin = data_z;
+    if(interp[y][x].Zmax < data_z)
+        interp[y][x].Zmax = data_z;
 
-    interp[x][y].Zmean += data_z;
-    interp[x][y].count++;
+    interp[y][x].Zmean += data_z;
+    interp[y][x].count++;
 
     // https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Online_algorithm
-    double delta = data_z - interp[x][y].Zstd_tmp;
-    interp[x][y].Zstd_tmp += delta/interp[x][y].count;
-    interp[x][y].Zstd += delta * (data_z - interp[x][y].Zstd_tmp);
+    double delta = data_z - interp[y][x].Zstd_tmp;
+    interp[y][x].Zstd_tmp += delta/interp[y][x].count;
+    interp[y][x].Zstd += delta * (data_z - interp[y][x].Zstd_tmp);
 
     double dist = pow(distance, Interpolation::WEIGHTER);
 
-    if(interp[x][y].sum != -1) {
+    if(interp[y][x].sum != -1) {
         if(dist != 0) {
-            interp[x][y].Zidw += data_z/dist;
-            interp[x][y].sum += 1/dist;
+            interp[y][x].Zidw += data_z/dist;
+            interp[y][x].sum += 1/dist;
         } else {
-            interp[x][y].Zidw = data_z;
-            interp[x][y].sum = -1;
+            interp[y][x].Zidw = data_z;
+            interp[y][x].sum = -1;
         }
     } else {
         // do nothing
@@ -599,16 +646,18 @@ void MpiInterp::updateGridPoint(int x, int y, double data_z, double distance)
 void MpiInterp::printArray()
 {
     int i, j;
-
-    for(i = 0; i < GRID_SIZE_X; i++)
+    if (is_writer)
     {
-        for(j = 1; j < GRID_SIZE_Y; j++)
+        for (i = 0; i < w_row_end_index - w_row_start_index + 1; i++)
         {
-            cerr << interp[i][j].Zmin << ", " << interp[i][j].Zmax << ", ";
-            cerr << interp[i][j].Zmean << ", " << interp[i][j].Zidw << endl;
-            //printf("%.20f ", interp[i][j].Zmax);
+            for (j = 1; j < GRID_SIZE_X; j++)
+            {
+                cerr << interp[i][j].Zmin << ", " << interp[i][j].Zmax << ", ";
+                cerr << interp[i][j].Zmean << ", " << interp[i][j].Zidw << endl;
+                //printf("%.20f ", interp[i][j].Zmax);
+            }
+            //printf("\n");
         }
-        //printf("\n");
     }
     cerr << endl;
 }
@@ -819,8 +868,10 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
             }
         }
     }
+    printf("arc and grid_file_mpi_offset %lli %lli %i\n", grid_file_mpi_offset[0], grid_file_mpi_offset[0], rank);
 
-    if(rank > mpi_reader_count - 1)
+
+    if(is_writer)
     {
     //**************************** Loop 1, calculate total write size for each worker and set file offset *********
     // initialize mpi_size for each file

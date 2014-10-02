@@ -343,13 +343,13 @@ int Interpolation::interpolation(char *inputName,
         
 
     }
-/*
+
     if((rc = interp->finish(outputName, outputFormat, outputType)) < 0)
     {
         cerr << "interp->finish() error" << endl;
         return -1;
     }
-*/
+
     cerr << "Interpolation::interpolation() done successfully, rank " << rank << endl;
 
     return 0;

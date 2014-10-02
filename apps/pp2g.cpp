@@ -417,7 +417,7 @@ int main(int argc, char **argv)
     printf("# of data: %d\n", ip->getDataCount());
     printf("dimension: %d x %d\n", ip->getGridSizeX(), ip->getGridSizeY());
 
-    //delete ip;
     MPI_Finalize();
+    //delete ip;
     return 0;
 }
