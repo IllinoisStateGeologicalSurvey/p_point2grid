@@ -777,17 +777,17 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
             {
                 if (arcFiles[i] != NULL)
                 {
-                    sprintf (buf, "ncols %d\n", GRID_SIZE_X);
+                    buf[0]=0; sprintf (buf, "ncols %d\n", GRID_SIZE_X);
                     MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    sprintf (buf, "nrows %d\n", GRID_SIZE_Y);
+                    buf[0]=0; sprintf (buf, "nrows %d\n", GRID_SIZE_Y);
                     MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    sprintf (buf, "xllcorner %f\n", min_x);
+                    buf[0]=0; sprintf (buf, "xllcorner %f\n", min_x);
                     MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    sprintf (buf, "yllcorner %f\n", min_y);
+                    buf[0]=0; sprintf (buf, "yllcorner %f\n", min_y);
                     MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    sprintf (buf, "cellsize %f\n", GRID_DIST_X);
+                    buf[0]=0; sprintf (buf, "cellsize %f\n", GRID_DIST_X);
                     MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    sprintf (buf, "NODATA_value -9999\n");
+                    buf[0]=0; sprintf (buf, "NODATA_value -9999\n");
                     MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
                 }
                 MPI_File_get_position(arcFiles[i], &(arc_file_mpi_offset[i]));
@@ -801,18 +801,19 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
             {
                 if (gridFiles[i] != NULL)
                 {
-                    sprintf (buf, "north: %f\n", max_y);
-                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    sprintf (buf, "south: %f\n", min_y);
-                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    sprintf (buf, "east: %f\n", max_x);
-                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    sprintf (buf, "west: %f\n", min_x);
-                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    sprintf (buf, "rows: %d\n", GRID_SIZE_Y);
-                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    sprintf (buf, "cols: %d\n", GRID_SIZE_X);
-                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    buf[0]=0; sprintf (buf, "north: %f\n", max_y);
+                    MPI_File_write(gridFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    buf[0]=0; sprintf (buf, "south: %f\n", min_y);
+                    MPI_File_write(gridFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    buf[0]=0; sprintf (buf, "east: %f\n", max_x);
+                    MPI_File_write(gridFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    buf[0]=0; sprintf (buf, "west: %f\n", min_x);
+                    MPI_File_write(gridFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    buf[0]=0; sprintf (buf, "rows: %d\n", GRID_SIZE_Y);
+                    MPI_File_write(gridFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    buf[0]=0; sprintf (buf, "cols: %d\n", GRID_SIZE_X);
+                    MPI_File_write(gridFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+
                 }
                 MPI_File_get_position(gridFiles[i], &(grid_file_mpi_offset[i]));
             }
@@ -868,8 +869,10 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
             }
         }
     }
-    printf("arc and grid_file_mpi_offset %lli %lli %i\n", grid_file_mpi_offset[0], grid_file_mpi_offset[0], rank);
-
+    for(i=0;i<6;i++)
+    {
+    //printf("arc and grid_file_mpi_offset %lli %lli %i\n", arc_file_mpi_offset[i], grid_file_mpi_offset[i], rank);
+    }
 
     if(is_writer)
     {
@@ -879,13 +882,13 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
         for (k = 0; k < numTypes; k++)
         {
             if (arcFiles[k] != NULL)
-                arc_file_mpi_size[k] += 0;
+                arc_file_mpi_size[k] = 0;
         }
     if (gridFiles != NULL)
         for (k = 0; k < numTypes; k++)
         {
             if (gridFiles[k] != NULL)
-                arc_file_mpi_size[k] += 0;
+                arc_file_mpi_size[k] = 0;
         }
 
     // add up the write size for all files for this worker
@@ -901,9 +904,11 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 {
                     if(interp[i][j].empty == 0 &&
                             interp[i][j].filled == 0)
-                        arc_file_mpi_size[0] += sprintf(buf, "-9999 ");
+                    {
+                        buf[0]=0; arc_file_mpi_size[0] += sprintf(buf, "-9999 ");
+                    }
                     else
-                        arc_file_mpi_size[0] += sprintf(buf, "%f ", interp[i][j].Zmin);
+                        {buf[0]=0; arc_file_mpi_size[0] += sprintf(buf, "%f ", interp[i][j].Zmin);}
                 }
 
                 // Zmax
@@ -911,9 +916,9 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 {
                     if(interp[i][j].empty == 0 &&
                             interp[i][j].filled == 0)
-                        arc_file_mpi_size[1] += sprintf(buf, "-9999 ");
+                        {buf[0]=0; arc_file_mpi_size[1] += sprintf(buf, "-9999 ");}
                     else
-                        arc_file_mpi_size[1] += sprintf(buf, "%f ", interp[i][j].Zmax);
+                        {buf[0]=0; arc_file_mpi_size[1] += sprintf(buf, "%f ", interp[i][j].Zmax);}
                 }
 
                 // Zmean
@@ -921,9 +926,9 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 {
                     if(interp[i][j].empty == 0 &&
                             interp[i][j].filled == 0)
-                        arc_file_mpi_size[2] += sprintf(buf, "-9999 ");
+                        {buf[0]=0; arc_file_mpi_size[2] += sprintf(buf, "-9999 ");}
                     else
-                        arc_file_mpi_size[2] += sprintf(buf, "%f ", interp[i][j].Zmean);
+                        {buf[0]=0; arc_file_mpi_size[2] += sprintf(buf, "%f ", interp[i][j].Zmean);}
                 }
 
                 // Zidw
@@ -931,9 +936,9 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 {
                     if(interp[i][j].empty == 0 &&
                             interp[i][j].filled == 0)
-                        arc_file_mpi_size[3] += sprintf(buf, "-9999 ");
+                        {buf[0]=0; arc_file_mpi_size[3] += sprintf(buf, "-9999 ");}
                     else
-                        arc_file_mpi_size[3] += sprintf(buf, "%f ", interp[i][j].Zidw);
+                        {buf[0]=0; arc_file_mpi_size[3] += sprintf(buf, "%f ", interp[i][j].Zidw);}
                 }
 
                 // count
@@ -941,9 +946,9 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 {
                     if(interp[i][j].empty == 0 &&
                             interp[i][j].filled == 0)
-                        arc_file_mpi_size[4] += sprintf(buf, "-9999 ");
+                        {buf[0]=0; arc_file_mpi_size[4] += sprintf(buf, "-9999 ");}
                     else
-                        arc_file_mpi_size[4] += sprintf(buf, "%d ", interp[i][j].count);
+                        {buf[0]=0; arc_file_mpi_size[4] += sprintf(buf, "%d ", interp[i][j].count);}
                 }
 
 		// count
@@ -951,9 +956,9 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 {
                     if(interp[i][j].empty == 0 &&
                             interp[i][j].filled == 0)
-                        arc_file_mpi_size[5] += sprintf(buf, "-9999 ");
+                        {buf[0]=0; arc_file_mpi_size[5] += sprintf(buf, "-9999 ");}
                     else
-                        arc_file_mpi_size[5] += sprintf(buf, "%f ", interp[i][j].Zstd);
+                        {buf[0]=0; arc_file_mpi_size[5] += sprintf(buf, "%f ", interp[i][j].Zstd);}
                 }
 	    }
 
@@ -964,9 +969,9 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 {
                     if(interp[i][j].empty == 0 &&
                             interp[i][j].filled == 0)
-                        arc_file_mpi_size[0] += sprintf(buf, "-9999 ");
+                        {buf[0]=0; grid_file_mpi_size[0] += sprintf(buf, "-9999 ");}
                     else
-                        arc_file_mpi_size[0] += sprintf(buf, "%f ", interp[i][j].Zmin);
+                        {buf[0]=0; grid_file_mpi_size[0] += sprintf(buf, "%f ", interp[i][j].Zmin);}
                 }
 
                 // Zmax
@@ -974,9 +979,9 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 {
                     if(interp[i][j].empty == 0 &&
                             interp[i][j].filled == 0)
-                        arc_file_mpi_size[1] += sprintf(buf, "-9999 ");
+                        {buf[0]=0; grid_file_mpi_size[1] += sprintf(buf, "-9999 ");}
                     else
-                        arc_file_mpi_size[1] += sprintf(buf, "%f ", interp[i][j].Zmax);
+                        {buf[0]=0; grid_file_mpi_size[1] += sprintf(buf, "%f ", interp[i][j].Zmax);}
                 }
 
                 // Zmean
@@ -984,9 +989,9 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 {
                     if(interp[i][j].empty == 0 &&
                             interp[i][j].filled == 0)
-                        arc_file_mpi_size[2] += sprintf(buf, "-9999 ");
+                        {buf[0]=0; grid_file_mpi_size[2] += sprintf(buf, "-9999 ");}
                     else
-                        arc_file_mpi_size[2] += sprintf(buf, "%f ", interp[i][j].Zmean);
+                        {buf[0]=0; grid_file_mpi_size[2] += sprintf(buf, "%f ", interp[i][j].Zmean);}
                 }
 
                 // Zidw
@@ -994,9 +999,9 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 {
                     if(interp[i][j].empty == 0 &&
                             interp[i][j].filled == 0)
-                        arc_file_mpi_size[3] += sprintf(buf, "-9999 ");
+                        {buf[0]=0; grid_file_mpi_size[3] += sprintf(buf, "-9999 ");}
                     else
-                        arc_file_mpi_size[3] += sprintf(buf, "%f ", interp[i][j].Zidw);
+                        {buf[0]=0; grid_file_mpi_size[3] += sprintf(buf, "%f ", interp[i][j].Zidw);}
                 }
 
                 // count
@@ -1004,9 +1009,9 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 {
                     if(interp[i][j].empty == 0 &&
                             interp[i][j].filled == 0)
-                        arc_file_mpi_size[4] += sprintf(buf, "-9999 ");
+                        {buf[0]=0; grid_file_mpi_size[4] += sprintf(buf, "-9999 ");}
                     else
-                        arc_file_mpi_size[4] += sprintf(buf, "%d ", interp[i][j].count);
+                        {buf[0]=0; grid_file_mpi_size[4] += sprintf(buf, "%d ", interp[i][j].count);}
 		}
 
                 // count
@@ -1014,25 +1019,36 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 {
                     if(interp[i][j].empty == 0 &&
                             interp[i][j].filled == 0)
-                        arc_file_mpi_size[5] += sprintf(buf, "-9999 ");
+                        {buf[0]=0; grid_file_mpi_size[5] += sprintf(buf, "-9999 ");}
                     else
-                        arc_file_mpi_size[5] += sprintf(buf, "%f ", interp[i][j].Zstd);
+                        {buf[0]=0; grid_file_mpi_size[5] += sprintf(buf, "%f ", interp[i][j].Zstd);}
                 }
             }
         }
-        if(arcFiles != NULL)
-            for(k = 0; k < numTypes; k++)
-            {
-                if(arcFiles[k] != NULL)
-                    arc_file_mpi_size[k] += sprintf(buf, "\n");
-            }
-        if(gridFiles != NULL)
-            for(k = 0; k < numTypes; k++)
-            {
-                if(gridFiles[k] != NULL)
-                    arc_file_mpi_size[k] += sprintf(buf, "\n");
-            }
     }
+    if(arcFiles != NULL)
+    {
+        for(k = 0; k < numTypes; k++)
+        {
+            if(arcFiles[k] != NULL)
+                {
+                    buf[0]=0; arc_file_mpi_size[k] += sprintf(buf, "\n");
+                    printf("arc_file_mpi_size[k] %u k %i rank %i\n", arc_file_mpi_size[k], k, rank);
+                }
+        }
+    }
+    if(gridFiles != NULL)
+    {
+        for(k = 0; k < numTypes; k++)
+        {
+            if(gridFiles[k] != NULL)
+            {
+                buf[0]=0; grid_file_mpi_size[k] += sprintf(buf, "\n");
+                printf("grid_file_mpi_size[k] %u k %i rank %i\n", grid_file_mpi_size[k], k, rank);
+            }
+        }
+    }
+
     // Gather, calculate, and set each worker's offset
 
 
@@ -1040,7 +1056,7 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
 
 
 
-    } // end if(rank > reader_count -1)
+    } // end if()
 
 #ifdef HAVE_GDAL
     GDALDataset **gdalFiles;
