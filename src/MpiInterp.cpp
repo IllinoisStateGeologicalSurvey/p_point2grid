@@ -695,10 +695,11 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
             cerr << "Arc MPI_File malloc error: " << endl;
             return -1;
         }
-        arc_file_mpi_offset = (MPI_Offset *) malloc(sizeof(MPI_Offset) * numTypes);
+        arc_file_mpi_offset = (MPI_Offset *) malloc(sizeof(MPI_Offset) * numTypes); // write position after header
         arc_file_mpi_buffer = (char **) malloc(sizeof(char *) * numTypes);
         arc_file_mpi_count =  (int *) malloc(sizeof(int) * numTypes);
         arc_file_mpi_size =  (unsigned int *) malloc(sizeof(unsigned int) * numTypes);
+        arc_file_mpi_sizes =  (unsigned int **) malloc(sizeof(unsigned int *) * numTypes);
 
         for(i = 0; i < numTypes; i++)
         {
@@ -711,6 +712,7 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 MPI_File_set_size(arcFiles[i], 0);
                 arc_file_mpi_offset[i] = 0;
                 arc_file_mpi_buffer[i] = (char *) malloc(sizeof(char) * mpi_buffer_size);
+                arc_file_mpi_sizes[i] =  (unsigned int *) malloc(sizeof(unsigned int) * process_count);
                 arc_file_mpi_count[i] = 0;
                 arc_file_mpi_size[i] = 0;
             }
@@ -737,6 +739,7 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
         grid_file_mpi_buffer = (char **) malloc(sizeof(char *) * numTypes);
         grid_file_mpi_count =  (int *) malloc(sizeof(int) * numTypes);
         grid_file_mpi_size =  (unsigned int *) malloc(sizeof(unsigned int) * numTypes);
+        grid_file_mpi_sizes =  (unsigned int **) malloc(sizeof(unsigned int *) * numTypes);
 
         for(i = 0; i < numTypes; i++)
         {
@@ -752,6 +755,7 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 MPI_File_set_size(gridFiles[i], 0);
                 grid_file_mpi_offset[i] = 0;
                 grid_file_mpi_buffer[i] = (char *) malloc(sizeof(char) * mpi_buffer_size);
+                grid_file_mpi_sizes[i] =  (unsigned int *) malloc(sizeof(unsigned int) * process_count);
                 grid_file_mpi_count[i] = 0;
                 grid_file_mpi_size[i] = 0;
             }
@@ -874,189 +878,581 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
     //printf("arc and grid_file_mpi_offset %lli %lli %i\n", arc_file_mpi_offset[i], grid_file_mpi_offset[i], rank);
     }
 
-    if(is_writer)
+    if (is_writer)
     {
-    //**************************** Loop 1, calculate total write size for each worker and set file offset *********
-    // initialize mpi_size for each file
-    if (arcFiles != NULL)
-        for (k = 0; k < numTypes; k++)
-        {
-            if (arcFiles[k] != NULL)
-                arc_file_mpi_size[k] = 0;
-        }
-    if (gridFiles != NULL)
-        for (k = 0; k < numTypes; k++)
-        {
-            if (gridFiles[k] != NULL)
-                arc_file_mpi_size[k] = 0;
-        }
-
-    // add up the write size for all files for this worker
-    int row_count = w_row_end_index - w_row_start_index + 1;
-    for(i = 0; i < row_count; i++)
-    {
-        for(j = 0; j < GRID_SIZE_X; j++)
-        {
-            if(arcFiles != NULL)
+        //**************************** Loop 1, calculate total write size for each worker and set file offset *********
+        // initialize mpi_size for each file
+        if (arcFiles != NULL)
+            for (k = 0; k < numTypes; k++)
             {
-                // Zmin
-                if(arcFiles[0] != NULL)
+                if (arcFiles[k] != NULL)
+                    arc_file_mpi_size[k] = 0;
+            }
+        if (gridFiles != NULL)
+            for (k = 0; k < numTypes; k++)
+            {
+                if (gridFiles[k] != NULL)
+                    grid_file_mpi_size[k] = 0;
+            }
+
+        // add up the write size for all files for this worker
+        int row_count = w_row_end_index - w_row_start_index + 1;
+        for (i = 0; i < row_count; i++)
+        {
+            for (j = 0; j < GRID_SIZE_X; j++)
+            {
+                if (arcFiles != NULL)
                 {
-                    if(interp[i][j].empty == 0 &&
-                            interp[i][j].filled == 0)
+                    // Zmin
+                    if (arcFiles[0] != NULL)
                     {
-                        buf[0]=0; arc_file_mpi_size[0] += sprintf(buf, "-9999 ");
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[0] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[0] += sprintf (buf, "%f ",
+                                                             interp[i][j].Zmin);
+                        }
                     }
-                    else
-                        {buf[0]=0; arc_file_mpi_size[0] += sprintf(buf, "%f ", interp[i][j].Zmin);}
+
+                    // Zmax
+                    if (arcFiles[1] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[1] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[1] += sprintf (buf, "%f ",
+                                                             interp[i][j].Zmax);
+                        }
+                    }
+
+                    // Zmean
+                    if (arcFiles[2] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[2] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[2] += sprintf (
+                                    buf, "%f ", interp[i][j].Zmean);
+                        }
+                    }
+
+                    // Zidw
+                    if (arcFiles[3] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[3] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[3] += sprintf (buf, "%f ",
+                                                             interp[i][j].Zidw);
+                        }
+                    }
+
+                    // count
+                    if (arcFiles[4] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[4] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[4] += sprintf (
+                                    buf, "%d ", interp[i][j].count);
+                        }
+                    }
+
+                    // count
+                    if (arcFiles[5] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[5] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[5] += sprintf (buf, "%f ",
+                                                             interp[i][j].Zstd);
+                        }
+                    }
                 }
 
-                // Zmax
-                if(arcFiles[1] != NULL)
+                if (gridFiles != NULL)
                 {
-                    if(interp[i][j].empty == 0 &&
-                            interp[i][j].filled == 0)
-                        {buf[0]=0; arc_file_mpi_size[1] += sprintf(buf, "-9999 ");}
-                    else
-                        {buf[0]=0; arc_file_mpi_size[1] += sprintf(buf, "%f ", interp[i][j].Zmax);}
-                }
+                    // Zmin
+                    if (gridFiles[0] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[0] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[0] += sprintf (
+                                    buf, "%f ", interp[i][j].Zmin);
+                        }
+                    }
 
-                // Zmean
-                if(arcFiles[2] != NULL)
-                {
-                    if(interp[i][j].empty == 0 &&
-                            interp[i][j].filled == 0)
-                        {buf[0]=0; arc_file_mpi_size[2] += sprintf(buf, "-9999 ");}
-                    else
-                        {buf[0]=0; arc_file_mpi_size[2] += sprintf(buf, "%f ", interp[i][j].Zmean);}
-                }
+                    // Zmax
+                    if (gridFiles[1] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[1] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[1] += sprintf (
+                                    buf, "%f ", interp[i][j].Zmax);
+                        }
+                    }
 
-                // Zidw
-                if(arcFiles[3] != NULL)
-                {
-                    if(interp[i][j].empty == 0 &&
-                            interp[i][j].filled == 0)
-                        {buf[0]=0; arc_file_mpi_size[3] += sprintf(buf, "-9999 ");}
-                    else
-                        {buf[0]=0; arc_file_mpi_size[3] += sprintf(buf, "%f ", interp[i][j].Zidw);}
-                }
+                    // Zmean
+                    if (gridFiles[2] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[2] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[2] += sprintf (
+                                    buf, "%f ", interp[i][j].Zmean);
+                        }
+                    }
 
-                // count
-                if(arcFiles[4] != NULL)
-                {
-                    if(interp[i][j].empty == 0 &&
-                            interp[i][j].filled == 0)
-                        {buf[0]=0; arc_file_mpi_size[4] += sprintf(buf, "-9999 ");}
-                    else
-                        {buf[0]=0; arc_file_mpi_size[4] += sprintf(buf, "%d ", interp[i][j].count);}
-                }
+                    // Zidw
+                    if (gridFiles[3] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[3] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[3] += sprintf (
+                                    buf, "%f ", interp[i][j].Zidw);
+                        }
+                    }
 
-		// count
-                if(arcFiles[5] != NULL)
-                {
-                    if(interp[i][j].empty == 0 &&
-                            interp[i][j].filled == 0)
-                        {buf[0]=0; arc_file_mpi_size[5] += sprintf(buf, "-9999 ");}
-                    else
-                        {buf[0]=0; arc_file_mpi_size[5] += sprintf(buf, "%f ", interp[i][j].Zstd);}
-                }
-	    }
+                    // count
+                    if (gridFiles[4] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[4] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[4] += sprintf (
+                                    buf, "%d ", interp[i][j].count);
+                        }
+                    }
 
-            if(gridFiles != NULL)
-            {
-                // Zmin
-                if(gridFiles[0] != NULL)
-                {
-                    if(interp[i][j].empty == 0 &&
-                            interp[i][j].filled == 0)
-                        {buf[0]=0; grid_file_mpi_size[0] += sprintf(buf, "-9999 ");}
-                    else
-                        {buf[0]=0; grid_file_mpi_size[0] += sprintf(buf, "%f ", interp[i][j].Zmin);}
-                }
-
-                // Zmax
-                if(gridFiles[1] != NULL)
-                {
-                    if(interp[i][j].empty == 0 &&
-                            interp[i][j].filled == 0)
-                        {buf[0]=0; grid_file_mpi_size[1] += sprintf(buf, "-9999 ");}
-                    else
-                        {buf[0]=0; grid_file_mpi_size[1] += sprintf(buf, "%f ", interp[i][j].Zmax);}
-                }
-
-                // Zmean
-                if(gridFiles[2] != NULL)
-                {
-                    if(interp[i][j].empty == 0 &&
-                            interp[i][j].filled == 0)
-                        {buf[0]=0; grid_file_mpi_size[2] += sprintf(buf, "-9999 ");}
-                    else
-                        {buf[0]=0; grid_file_mpi_size[2] += sprintf(buf, "%f ", interp[i][j].Zmean);}
-                }
-
-                // Zidw
-                if(gridFiles[3] != NULL)
-                {
-                    if(interp[i][j].empty == 0 &&
-                            interp[i][j].filled == 0)
-                        {buf[0]=0; grid_file_mpi_size[3] += sprintf(buf, "-9999 ");}
-                    else
-                        {buf[0]=0; grid_file_mpi_size[3] += sprintf(buf, "%f ", interp[i][j].Zidw);}
-                }
-
-                // count
-                if(gridFiles[4] != NULL)
-                {
-                    if(interp[i][j].empty == 0 &&
-                            interp[i][j].filled == 0)
-                        {buf[0]=0; grid_file_mpi_size[4] += sprintf(buf, "-9999 ");}
-                    else
-                        {buf[0]=0; grid_file_mpi_size[4] += sprintf(buf, "%d ", interp[i][j].count);}
-		}
-
-                // count
-                if(gridFiles[5] != NULL)
-                {
-                    if(interp[i][j].empty == 0 &&
-                            interp[i][j].filled == 0)
-                        {buf[0]=0; grid_file_mpi_size[5] += sprintf(buf, "-9999 ");}
-                    else
-                        {buf[0]=0; grid_file_mpi_size[5] += sprintf(buf, "%f ", interp[i][j].Zstd);}
+                    // count
+                    if (gridFiles[5] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[5] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[5] += sprintf (
+                                    buf, "%f ", interp[i][j].Zstd);
+                        }
+                    }
                 }
             }
         }
-    }
-    if(arcFiles != NULL)
-    {
-        for(k = 0; k < numTypes; k++)
+        if (rank == process_count - 1)
         {
-            if(arcFiles[k] != NULL)
-                {
-                    buf[0]=0; arc_file_mpi_size[k] += sprintf(buf, "\n");
-                    printf("arc_file_mpi_size[k] %u k %i rank %i\n", arc_file_mpi_size[k], k, rank);
-                }
-        }
-    }
-    if(gridFiles != NULL)
-    {
-        for(k = 0; k < numTypes; k++)
-        {
-            if(gridFiles[k] != NULL)
+            if (arcFiles != NULL)
             {
-                buf[0]=0; grid_file_mpi_size[k] += sprintf(buf, "\n");
-                printf("grid_file_mpi_size[k] %u k %i rank %i\n", grid_file_mpi_size[k], k, rank);
+                for (k = 0; k < numTypes; k++)
+                {
+                    if (arcFiles[k] != NULL)
+                    {
+                        buf[0] = 0;
+                        arc_file_mpi_size[k] += sprintf (buf, "\n");
+                    }
+                }
             }
-        }
-    }
+            if (gridFiles != NULL)
+            {
+                for (k = 0; k < numTypes; k++)
+                {
+                    if (gridFiles[k] != NULL)
+                    {
+                        buf[0] = 0;
+                        grid_file_mpi_size[k] += sprintf (buf, "\n");
+                    }
+                }
+            }
+        } //end if (rank == process_count - 1)
+
+    } // end if(is_writer)
 
     // Gather, calculate, and set each worker's offset
 
 
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    if (arcFiles != NULL)
+     {
+         for (i = 0; i < numTypes; i++)
+         {
+             if (arcFiles[i] != NULL)
+             {
+                 MPI_Allgather(&(arc_file_mpi_size[i]), 1, MPI_UNSIGNED, arc_file_mpi_sizes[i], 1, MPI_UNSIGNED, MPI_COMM_WORLD);
+             }
+         }
+     }
+
+     if (gridFiles != NULL)
+     {
+         for (i = 0; i < numTypes; i++)
+         {
+             if (gridFiles[i] != NULL)
+             {
+                 MPI_Allgather(&(grid_file_mpi_size[i]), 1, MPI_UNSIGNED, grid_file_mpi_sizes[i], 1, MPI_UNSIGNED, MPI_COMM_WORLD);
+             }
+         }
+     }
+
+
+     if (is_writer)
+    {
+        if (arcFiles != NULL)
+        {
+            for (i = 0; i < numTypes; i++)
+            {
+                if (arcFiles[i] != NULL)
+                {
+                    int j;
+                    for (j = mpi_reader_count; j < rank; j++)
+                    {
+                        arc_file_mpi_offset[i] += arc_file_mpi_sizes[i][j];
+                    }
+                    MPI_File_seek (arcFiles[i], arc_file_mpi_offset[i],
+                    MPI_SEEK_SET);
+                    printf ("arc_file_mpi_sizes[i] %i %u, %lli, rank %i\n", i,
+                            arc_file_mpi_sizes[i][rank], arc_file_mpi_offset[i],
+                            rank);
+                }
+            }
+        }
+
+        if (gridFiles != NULL)
+        {
+            for (i = 0; i < numTypes; i++)
+            {
+                if (gridFiles[i] != NULL)
+                {
+                    int j;
+                    for (j = mpi_reader_count; j < rank; j++)
+                    {
+                        grid_file_mpi_offset[i] += grid_file_mpi_sizes[i][j];
+                    }
+                    MPI_File_seek (gridFiles[i], grid_file_mpi_offset[i],
+                    MPI_SEEK_SET);
+                    printf ("grid_file_mpi_sizes[i] %i %u, %lli,  rank %i\n", i,
+                            grid_file_mpi_sizes[i][rank],
+                            grid_file_mpi_offset[i], rank);
+                }
+            }
+        }
+
+        //**************************** write the file  *********
+        // initialize mpi_size for each file
+        if (arcFiles != NULL)
+            for (k = 0; k < numTypes; k++)
+            {
+                if (arcFiles[k] != NULL)
+                    arc_file_mpi_buffer[k][0] = 0;
+                    arc_file_mpi_count[k] = 0;
+            }
+        if (gridFiles != NULL)
+            for (k = 0; k < numTypes; k++)
+            {
+                if (gridFiles[k] != NULL)
+                    grid_file_mpi_buffer[k][0] = 0;
+                    grid_file_mpi_count[k] = 0;
+            }
+
+        // add up the write size for all files for this worker
+        int row_count = w_row_end_index - w_row_start_index + 1;
+        for (i = 0; i < row_count; i++)
+        {
+            for (j = 0; j < GRID_SIZE_X; j++)
+            {
+                if (arcFiles != NULL)
+                {
+                    // Zmin
+                    if (arcFiles[0] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[0] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[0] += sprintf (buf, "%f ",
+                                                             interp[i][j].Zmin);
+                        }
+                    }
+
+                    // Zmax
+                    if (arcFiles[1] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[1] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[1] += sprintf (buf, "%f ",
+                                                             interp[i][j].Zmax);
+                        }
+                    }
+
+                    // Zmean
+                    if (arcFiles[2] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[2] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[2] += sprintf (
+                                    buf, "%f ", interp[i][j].Zmean);
+                        }
+                    }
+
+                    // Zidw
+                    if (arcFiles[3] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[3] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[3] += sprintf (buf, "%f ",
+                                                             interp[i][j].Zidw);
+                        }
+                    }
+
+                    // count
+                    if (arcFiles[4] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[4] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[4] += sprintf (
+                                    buf, "%d ", interp[i][j].count);
+                        }
+                    }
+
+                    // count
+                    if (arcFiles[5] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[5] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[5] += sprintf (buf, "%f ",
+                                                             interp[i][j].Zstd);
+                        }
+                    }
+                }
+
+                if (gridFiles != NULL)
+                {
+                    // Zmin
+                    if (gridFiles[0] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[0] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[0] += sprintf (
+                                    buf, "%f ", interp[i][j].Zmin);
+                        }
+                    }
+
+                    // Zmax
+                    if (gridFiles[1] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[1] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[1] += sprintf (
+                                    buf, "%f ", interp[i][j].Zmax);
+                        }
+                    }
+
+                    // Zmean
+                    if (gridFiles[2] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[2] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[2] += sprintf (
+                                    buf, "%f ", interp[i][j].Zmean);
+                        }
+                    }
+
+                    // Zidw
+                    if (gridFiles[3] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[3] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[3] += sprintf (
+                                    buf, "%f ", interp[i][j].Zidw);
+                        }
+                    }
+
+                    // count
+                    if (gridFiles[4] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[4] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[4] += sprintf (
+                                    buf, "%d ", interp[i][j].count);
+                        }
+                    }
+
+                    // count
+                    if (gridFiles[5] != NULL)
+                    {
+                        if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[5] += sprintf (buf, "-9999 ");
+                        }
+                        else
+                        {
+                            buf[0] = 0;
+                            grid_file_mpi_size[5] += sprintf (
+                                    buf, "%f ", interp[i][j].Zstd);
+                        }
+                    }
+                }
+            }
+        }
+        if (rank == process_count - 1)
+        {
+            if (arcFiles != NULL)
+            {
+                for (k = 0; k < numTypes; k++)
+                {
+                    if (arcFiles[k] != NULL)
+                    {
+                        buf[0] = 0;
+                        arc_file_mpi_size[k] += sprintf (buf, "\n");
+                    }
+                }
+            }
+            if (gridFiles != NULL)
+            {
+                for (k = 0; k < numTypes; k++)
+                {
+                    if (gridFiles[k] != NULL)
+                    {
+                        buf[0] = 0;
+                        grid_file_mpi_size[k] += sprintf (buf, "\n");
+                    }
+                }
+            }
+        } //end if (rank == process_count - 1)
 
 
 
 
-    } // end if()
+    } // if (is_writer)
+
+
+
 
 #ifdef HAVE_GDAL
     GDALDataset **gdalFiles;
