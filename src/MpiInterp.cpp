@@ -663,13 +663,58 @@ void MpiInterp::printArray()
 }
 
 
-
-
-
-
-int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outputType, double *adfGeoTransform, const char* wkt)
+void MpiInterp::flushMpiBuffers (MPI_File *arcFiles, MPI_File *gridFiles,
+                            int numTypes, int max_buffer_size = 0)
 {
-    int i,j,k;
+    int k = 0;
+    MPI_Status status;
+    if (arcFiles != NULL)
+    {
+        for (k = 0; k < numTypes; k++)
+        {
+            if (arcFiles[k] != NULL)
+            {
+                if (arc_file_mpi_count[k] > max_buffer_size)
+                {
+                    MPI_File_write (arcFiles[k], arc_file_mpi_buffer[k],
+                                    arc_file_mpi_count[k], MPI_CHAR, &status);
+                    printf("%i %lu %i\n", arc_file_mpi_count[k], strlen(arc_file_mpi_buffer[k]), rank);
+                    arc_file_mpi_buffer[k][0] = 0;
+                    arc_file_mpi_count[k] = 0;
+
+                }
+            }
+        }
+    }
+    if (gridFiles != NULL)
+    {
+        for (k = 0; k < numTypes; k++)
+        {
+            if (gridFiles[k] != NULL)
+            {
+                if (grid_file_mpi_count[k] > max_buffer_size)
+                {
+                    MPI_File_write (gridFiles[k], grid_file_mpi_buffer[k],
+                                    grid_file_mpi_count[k], MPI_CHAR, &status);
+                    grid_file_mpi_buffer[k][0] = 0;
+                    grid_file_mpi_count[0] = 0;
+                }
+            }
+        }
+    }
+
+}
+
+
+
+
+
+int
+MpiInterp::outputFile (char *outputName, int outputFormat,
+                       unsigned int outputType, double *adfGeoTransform,
+                       const char* wkt)
+{
+    int i, j, k;
 
     //FILE **arcFiles;
     MPI_File *arcFiles;
@@ -681,38 +726,46 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
     char buf[1024];
     MPI_Status status;
 
-    const char *ext[6] = {".min", ".max", ".mean", ".idw", ".den", ".std"};
-    unsigned int type[6] = {OUTPUT_TYPE_MIN, OUTPUT_TYPE_MAX, OUTPUT_TYPE_MEAN, OUTPUT_TYPE_IDW, OUTPUT_TYPE_DEN, OUTPUT_TYPE_STD};
+    const char *ext[6] = { ".min", ".max", ".mean", ".idw", ".den", ".std" };
+    unsigned int type[6] = { OUTPUT_TYPE_MIN, OUTPUT_TYPE_MAX, OUTPUT_TYPE_MEAN,
+            OUTPUT_TYPE_IDW, OUTPUT_TYPE_DEN, OUTPUT_TYPE_STD };
     int numTypes = 6;
 
-
-
     // open ArcGIS files
-    if(outputFormat == OUTPUT_FORMAT_ARC_ASCII || outputFormat == OUTPUT_FORMAT_ALL)
+    if (outputFormat == OUTPUT_FORMAT_ARC_ASCII
+            || outputFormat == OUTPUT_FORMAT_ALL)
     {
-        if((arcFiles = (MPI_File *)malloc(sizeof(MPI_File) *  numTypes)) == NULL)
+        if ((arcFiles = (MPI_File *) malloc (sizeof(MPI_File) * numTypes))
+                == NULL)
         {
             cerr << "Arc MPI_File malloc error: " << endl;
             return -1;
         }
-        arc_file_mpi_offset = (MPI_Offset *) malloc(sizeof(MPI_Offset) * numTypes); // write position after header
-        arc_file_mpi_buffer = (char **) malloc(sizeof(char *) * numTypes);
-        arc_file_mpi_count =  (int *) malloc(sizeof(int) * numTypes);
-        arc_file_mpi_size =  (unsigned int *) malloc(sizeof(unsigned int) * numTypes);
-        arc_file_mpi_sizes =  (unsigned int **) malloc(sizeof(unsigned int *) * numTypes);
+        arc_file_mpi_offset = (MPI_Offset *) malloc (
+                sizeof(MPI_Offset) * numTypes); // write position after header
+        arc_file_mpi_buffer = (char **) malloc (sizeof(char *) * numTypes);
+        arc_file_mpi_count = (int *) malloc (sizeof(int) * numTypes);
+        arc_file_mpi_size = (unsigned int *) malloc (
+                sizeof(unsigned int) * numTypes);
+        arc_file_mpi_sizes = (unsigned int **) malloc (
+                sizeof(unsigned int *) * numTypes);
 
-        for(i = 0; i < numTypes; i++)
+        for (i = 0; i < numTypes; i++)
         {
-            if(outputType & type[i])
+            if (outputType & type[i])
             {
-                strncpy(arcFileName, outputName, sizeof(arcFileName));
-                strncat(arcFileName, ext[i], strlen(ext[i]));
-                strncat(arcFileName, ".asc", strlen(".asc"));
-                MPI_File_open(MPI_COMM_WORLD, arcFileName, MPI_MODE_CREATE|MPI_MODE_WRONLY, MPI_INFO_NULL, &(arcFiles[i]));
-                MPI_File_set_size(arcFiles[i], 0);
+                strncpy (arcFileName, outputName, sizeof(arcFileName));
+                strncat (arcFileName, ext[i], strlen (ext[i]));
+                strncat (arcFileName, ".asc", strlen (".asc"));
+                MPI_File_open (MPI_COMM_WORLD, arcFileName,
+                MPI_MODE_CREATE | MPI_MODE_WRONLY,
+                               MPI_INFO_NULL, &(arcFiles[i]));
+                MPI_File_set_size (arcFiles[i], 0);
                 arc_file_mpi_offset[i] = 0;
-                arc_file_mpi_buffer[i] = (char *) malloc(sizeof(char) * mpi_buffer_size);
-                arc_file_mpi_sizes[i] =  (unsigned int *) malloc(sizeof(unsigned int) * process_count);
+                arc_file_mpi_buffer[i] = (char *) malloc (
+                        sizeof(char) * mpi_buffer_size);
+                arc_file_mpi_sizes[i] = (unsigned int *) malloc (
+                        sizeof(unsigned int) * process_count);
                 arc_file_mpi_count[i] = 0;
                 arc_file_mpi_size[i] = 0;
             }
@@ -728,34 +781,41 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
     }
 
     // open Grid ASCII files
-    if(outputFormat == OUTPUT_FORMAT_GRID_ASCII || outputFormat == OUTPUT_FORMAT_ALL)
+    if (outputFormat == OUTPUT_FORMAT_GRID_ASCII
+            || outputFormat == OUTPUT_FORMAT_ALL)
     {
-        if((gridFiles = (MPI_File *)malloc(sizeof(MPI_File) * numTypes)) == NULL)
+        if ((gridFiles = (MPI_File *) malloc (sizeof(MPI_File) * numTypes))
+                == NULL)
         {
             cerr << "File array allocation error" << endl;
             return -1;
         }
-        grid_file_mpi_offset = (MPI_Offset *) malloc(sizeof(MPI_Offset) * numTypes);
-        grid_file_mpi_buffer = (char **) malloc(sizeof(char *) * numTypes);
-        grid_file_mpi_count =  (int *) malloc(sizeof(int) * numTypes);
-        grid_file_mpi_size =  (unsigned int *) malloc(sizeof(unsigned int) * numTypes);
-        grid_file_mpi_sizes =  (unsigned int **) malloc(sizeof(unsigned int *) * numTypes);
+        grid_file_mpi_offset = (MPI_Offset *) malloc (
+                sizeof(MPI_Offset) * numTypes);
+        grid_file_mpi_buffer = (char **) malloc (sizeof(char *) * numTypes);
+        grid_file_mpi_count = (int *) malloc (sizeof(int) * numTypes);
+        grid_file_mpi_size = (unsigned int *) malloc (
+                sizeof(unsigned int) * numTypes);
+        grid_file_mpi_sizes = (unsigned int **) malloc (
+                sizeof(unsigned int *) * numTypes);
 
-        for(i = 0; i < numTypes; i++)
+        for (i = 0; i < numTypes; i++)
         {
-            if(outputType & type[i])
+            if (outputType & type[i])
             {
-                strncpy(gridFileName, outputName, sizeof(arcFileName));
-                strncat(gridFileName, ext[i], strlen(ext[i]));
-                strncat(gridFileName, ".grid", strlen(".grid"));
+                strncpy (gridFileName, outputName, sizeof(arcFileName));
+                strncat (gridFileName, ext[i], strlen (ext[i]));
+                strncat (gridFileName, ".grid", strlen (".grid"));
 
                 MPI_File_open (MPI_COMM_WORLD, gridFileName,
-                               MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL,
-                               &(gridFiles[i]));
-                MPI_File_set_size(gridFiles[i], 0);
+                MPI_MODE_CREATE | MPI_MODE_WRONLY,
+                               MPI_INFO_NULL, &(gridFiles[i]));
+                MPI_File_set_size (gridFiles[i], 0);
                 grid_file_mpi_offset[i] = 0;
-                grid_file_mpi_buffer[i] = (char *) malloc(sizeof(char) * mpi_buffer_size);
-                grid_file_mpi_sizes[i] =  (unsigned int *) malloc(sizeof(unsigned int) * process_count);
+                grid_file_mpi_buffer[i] = (char *) malloc (
+                        sizeof(char) * mpi_buffer_size);
+                grid_file_mpi_sizes[i] = (unsigned int *) malloc (
+                        sizeof(unsigned int) * process_count);
                 grid_file_mpi_count[i] = 0;
                 grid_file_mpi_size[i] = 0;
             }
@@ -771,7 +831,6 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
     }
     MPI_Barrier (MPI_COMM_WORLD);
 
-
     if (rank == 0)
     {
         // print ArcGIS headers
@@ -781,20 +840,32 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
             {
                 if (arcFiles[i] != NULL)
                 {
-                    buf[0]=0; sprintf (buf, "ncols %d\n", GRID_SIZE_X);
-                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    buf[0]=0; sprintf (buf, "nrows %d\n", GRID_SIZE_Y);
-                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    buf[0]=0; sprintf (buf, "xllcorner %f\n", min_x);
-                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    buf[0]=0; sprintf (buf, "yllcorner %f\n", min_y);
-                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    buf[0]=0; sprintf (buf, "cellsize %f\n", GRID_DIST_X);
-                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    buf[0]=0; sprintf (buf, "NODATA_value -9999\n");
-                    MPI_File_write(arcFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    buf[0] = 0;
+                    sprintf (buf, "ncols %d\n", GRID_SIZE_X);
+                    MPI_File_write (arcFiles[i], buf, strlen (buf), MPI_CHAR,
+                                    &status);
+                    buf[0] = 0;
+                    sprintf (buf, "nrows %d\n", GRID_SIZE_Y);
+                    MPI_File_write (arcFiles[i], buf, strlen (buf), MPI_CHAR,
+                                    &status);
+                    buf[0] = 0;
+                    sprintf (buf, "xllcorner %f\n", min_x);
+                    MPI_File_write (arcFiles[i], buf, strlen (buf), MPI_CHAR,
+                                    &status);
+                    buf[0] = 0;
+                    sprintf (buf, "yllcorner %f\n", min_y);
+                    MPI_File_write (arcFiles[i], buf, strlen (buf), MPI_CHAR,
+                                    &status);
+                    buf[0] = 0;
+                    sprintf (buf, "cellsize %f\n", GRID_DIST_X);
+                    MPI_File_write (arcFiles[i], buf, strlen (buf), MPI_CHAR,
+                                    &status);
+                    buf[0] = 0;
+                    sprintf (buf, "NODATA_value -9999\n");
+                    MPI_File_write (arcFiles[i], buf, strlen (buf), MPI_CHAR,
+                                    &status);
                 }
-                MPI_File_get_position(arcFiles[i], &(arc_file_mpi_offset[i]));
+                MPI_File_get_position (arcFiles[i], &(arc_file_mpi_offset[i]));
             }
         }
 
@@ -805,21 +876,34 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
             {
                 if (gridFiles[i] != NULL)
                 {
-                    buf[0]=0; sprintf (buf, "north: %f\n", max_y);
-                    MPI_File_write(gridFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    buf[0]=0; sprintf (buf, "south: %f\n", min_y);
-                    MPI_File_write(gridFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    buf[0]=0; sprintf (buf, "east: %f\n", max_x);
-                    MPI_File_write(gridFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    buf[0]=0; sprintf (buf, "west: %f\n", min_x);
-                    MPI_File_write(gridFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    buf[0]=0; sprintf (buf, "rows: %d\n", GRID_SIZE_Y);
-                    MPI_File_write(gridFiles[i], buf, strlen(buf), MPI_CHAR, &status);
-                    buf[0]=0; sprintf (buf, "cols: %d\n", GRID_SIZE_X);
-                    MPI_File_write(gridFiles[i], buf, strlen(buf), MPI_CHAR, &status);
+                    buf[0] = 0;
+                    sprintf (buf, "north: %f\n", max_y);
+                    MPI_File_write (gridFiles[i], buf, strlen (buf), MPI_CHAR,
+                                    &status);
+                    buf[0] = 0;
+                    sprintf (buf, "south: %f\n", min_y);
+                    MPI_File_write (gridFiles[i], buf, strlen (buf), MPI_CHAR,
+                                    &status);
+                    buf[0] = 0;
+                    sprintf (buf, "east: %f\n", max_x);
+                    MPI_File_write (gridFiles[i], buf, strlen (buf), MPI_CHAR,
+                                    &status);
+                    buf[0] = 0;
+                    sprintf (buf, "west: %f\n", min_x);
+                    MPI_File_write (gridFiles[i], buf, strlen (buf), MPI_CHAR,
+                                    &status);
+                    buf[0] = 0;
+                    sprintf (buf, "rows: %d\n", GRID_SIZE_Y);
+                    MPI_File_write (gridFiles[i], buf, strlen (buf), MPI_CHAR,
+                                    &status);
+                    buf[0] = 0;
+                    sprintf (buf, "cols: %d\n", GRID_SIZE_X);
+                    MPI_File_write (gridFiles[i], buf, strlen (buf), MPI_CHAR,
+                                    &status);
 
                 }
-                MPI_File_get_position(gridFiles[i], &(grid_file_mpi_offset[i]));
+                MPI_File_get_position (gridFiles[i],
+                                       &(grid_file_mpi_offset[i]));
             }
         }
     } // if(rank == 0)
@@ -832,7 +916,8 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
         {
             if (arcFiles[i] != NULL)
             {
-                MPI_Bcast (&(arc_file_mpi_offset[i]), 1, MPI_OFFSET, 0, MPI_COMM_WORLD);
+                MPI_Bcast (&(arc_file_mpi_offset[i]), 1, MPI_OFFSET, 0,
+                MPI_COMM_WORLD);
             }
         }
     }
@@ -843,7 +928,8 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
         {
             if (gridFiles[i] != NULL)
             {
-                MPI_Bcast (&(grid_file_mpi_offset[i]), 1, MPI_OFFSET, 0, MPI_COMM_WORLD);
+                MPI_Bcast (&(grid_file_mpi_offset[i]), 1, MPI_OFFSET, 0,
+                MPI_COMM_WORLD);
             }
         }
     }
@@ -857,7 +943,7 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
             if (arcFiles[i] != NULL)
             {
                 MPI_File_seek (arcFiles[i], arc_file_mpi_offset[i],
-                               MPI_SEEK_SET);
+                MPI_SEEK_SET);
             }
         }
     }
@@ -869,13 +955,13 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
             if (gridFiles[i] != NULL)
             {
                 MPI_File_seek (gridFiles[i], grid_file_mpi_offset[i],
-                               MPI_SEEK_SET);
+                MPI_SEEK_SET);
             }
         }
     }
-    for(i=0;i<6;i++)
+    for (i = 0; i < 6; i++)
     {
-    //printf("arc and grid_file_mpi_offset %lli %lli %i\n", arc_file_mpi_offset[i], grid_file_mpi_offset[i], rank);
+        //printf("arc and grid_file_mpi_offset %lli %lli %i\n", arc_file_mpi_offset[i], grid_file_mpi_offset[i], rank);
     }
 
     if (is_writer)
@@ -1098,8 +1184,27 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                         }
                     }
                 }
+
+                if (j == GRID_SIZE_X - 1)
+                {
+                    for (k = 0; k < numTypes; k++)
+                    {
+
+                        if (arcFiles[k] != 0)
+                        {
+                            buf[0] = 0;
+                            arc_file_mpi_size[k] += sprintf(buf, "\n");
+                        }
+                        if (gridFiles[k] != 0)
+                        {
+                            buf[0]=0;
+                            grid_file_mpi_size[k] += sprintf(buf, "\n");
+                        }
+                    }
+                }
             }
         }
+        /*
         if (rank == process_count - 1)
         {
             if (arcFiles != NULL)
@@ -1125,38 +1230,40 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 }
             }
         } //end if (rank == process_count - 1)
-
+        */
     } // end if(is_writer)
 
     // Gather, calculate, and set each worker's offset
 
-
-    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier (MPI_COMM_WORLD);
 
     if (arcFiles != NULL)
-     {
-         for (i = 0; i < numTypes; i++)
-         {
-             if (arcFiles[i] != NULL)
-             {
-                 MPI_Allgather(&(arc_file_mpi_size[i]), 1, MPI_UNSIGNED, arc_file_mpi_sizes[i], 1, MPI_UNSIGNED, MPI_COMM_WORLD);
-             }
-         }
-     }
+    {
+        for (i = 0; i < numTypes; i++)
+        {
+            if (arcFiles[i] != NULL)
+            {
+                MPI_Allgather (&(arc_file_mpi_size[i]), 1, MPI_UNSIGNED,
+                               arc_file_mpi_sizes[i], 1, MPI_UNSIGNED,
+                               MPI_COMM_WORLD);
+            }
+        }
+    }
 
-     if (gridFiles != NULL)
-     {
-         for (i = 0; i < numTypes; i++)
-         {
-             if (gridFiles[i] != NULL)
-             {
-                 MPI_Allgather(&(grid_file_mpi_size[i]), 1, MPI_UNSIGNED, grid_file_mpi_sizes[i], 1, MPI_UNSIGNED, MPI_COMM_WORLD);
-             }
-         }
-     }
+    if (gridFiles != NULL)
+    {
+        for (i = 0; i < numTypes; i++)
+        {
+            if (gridFiles[i] != NULL)
+            {
+                MPI_Allgather (&(grid_file_mpi_size[i]), 1, MPI_UNSIGNED,
+                               grid_file_mpi_sizes[i], 1, MPI_UNSIGNED,
+                               MPI_COMM_WORLD);
+            }
+        }
+    }
 
-
-     if (is_writer)
+    if (is_writer)
     {
         if (arcFiles != NULL)
         {
@@ -1201,20 +1308,27 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
         //**************************** write the file  *********
         // initialize mpi_size for each file
         if (arcFiles != NULL)
+        {
             for (k = 0; k < numTypes; k++)
             {
                 if (arcFiles[k] != NULL)
+                {
                     arc_file_mpi_buffer[k][0] = 0;
                     arc_file_mpi_count[k] = 0;
+                }
             }
+        }
         if (gridFiles != NULL)
+        {
             for (k = 0; k < numTypes; k++)
             {
                 if (gridFiles[k] != NULL)
+                {
                     grid_file_mpi_buffer[k][0] = 0;
                     grid_file_mpi_count[k] = 0;
+                }
             }
-
+        }
         // add up the write size for all files for this worker
         int row_count = w_row_end_index - w_row_start_index + 1;
         for (i = 0; i < row_count; i++)
@@ -1228,15 +1342,17 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
-                            arc_file_mpi_size[0] += sprintf (buf, "-9999 ");
+                            arc_file_mpi_count[0] += sprintf (
+                                    arc_file_mpi_buffer[0]+arc_file_mpi_count[0], "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
-                            arc_file_mpi_size[0] += sprintf (buf, "%f ",
-                                                             interp[i][j].Zmin);
+                            arc_file_mpi_count[0] += sprintf (
+                                    arc_file_mpi_buffer[0]+ arc_file_mpi_count[0], "%f ",
+                                    interp[i][j].Zmin);
                         }
+
+                        //printf("%s\n", arc_file_mpi_buffer[0]);
                     }
 
                     // Zmax
@@ -1244,14 +1360,14 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
-                            arc_file_mpi_size[1] += sprintf (buf, "-9999 ");
+                            arc_file_mpi_count[1] += sprintf (
+                                    arc_file_mpi_buffer[1], "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
-                            arc_file_mpi_size[1] += sprintf (buf, "%f ",
-                                                             interp[i][j].Zmax);
+                            arc_file_mpi_count[1] += sprintf (
+                                    arc_file_mpi_buffer[1], "%f ",
+                                    interp[i][j].Zmax);
                         }
                     }
 
@@ -1260,14 +1376,14 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
-                            arc_file_mpi_size[2] += sprintf (buf, "-9999 ");
+                            arc_file_mpi_count[2] += sprintf (
+                                    arc_file_mpi_buffer[2], "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
-                            arc_file_mpi_size[2] += sprintf (
-                                    buf, "%f ", interp[i][j].Zmean);
+                            arc_file_mpi_count[2] += sprintf (
+                                    arc_file_mpi_buffer[2], "%f ",
+                                    interp[i][j].Zmean);
                         }
                     }
 
@@ -1276,14 +1392,14 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
-                            arc_file_mpi_size[3] += sprintf (buf, "-9999 ");
+                            arc_file_mpi_count[3] += sprintf (
+                                    arc_file_mpi_buffer[3], "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
-                            arc_file_mpi_size[3] += sprintf (buf, "%f ",
-                                                             interp[i][j].Zidw);
+                            arc_file_mpi_count[3] += sprintf (
+                                    arc_file_mpi_buffer[3], "%f ",
+                                    interp[i][j].Zidw);
                         }
                     }
 
@@ -1292,14 +1408,14 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
-                            arc_file_mpi_size[4] += sprintf (buf, "-9999 ");
+                            arc_file_mpi_count[4] += sprintf (
+                                    arc_file_mpi_buffer[4], "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
-                            arc_file_mpi_size[4] += sprintf (
-                                    buf, "%d ", interp[i][j].count);
+                            arc_file_mpi_count[4] += sprintf (
+                                    arc_file_mpi_buffer[4], "%d ",
+                                    interp[i][j].count);
                         }
                     }
 
@@ -1308,14 +1424,14 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
-                            arc_file_mpi_size[5] += sprintf (buf, "-9999 ");
+                            arc_file_mpi_count[5] += sprintf (
+                                    arc_file_mpi_buffer[5], "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
-                            arc_file_mpi_size[5] += sprintf (buf, "%f ",
-                                                             interp[i][j].Zstd);
+                            arc_file_mpi_count[5] += sprintf (
+                                    arc_file_mpi_buffer[5], "%f ",
+                                    interp[i][j].Zstd);
                         }
                     }
                 }
@@ -1327,14 +1443,14 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
-                            grid_file_mpi_size[0] += sprintf (buf, "-9999 ");
+                            grid_file_mpi_count[0] += sprintf (
+                                    grid_file_mpi_buffer[0]+grid_file_mpi_count[0],"-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
-                            grid_file_mpi_size[0] += sprintf (
-                                    buf, "%f ", interp[i][j].Zmin);
+                            grid_file_mpi_count[0] += sprintf (
+                                    grid_file_mpi_buffer[0]+grid_file_mpi_count[0],"%f ",
+                                    interp[i][j].Zmin);
                         }
                     }
 
@@ -1343,14 +1459,14 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
-                            grid_file_mpi_size[1] += sprintf (buf, "-9999 ");
+                            grid_file_mpi_count[1] += sprintf (
+                                    grid_file_mpi_buffer[1], "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
-                            grid_file_mpi_size[1] += sprintf (
-                                    buf, "%f ", interp[i][j].Zmax);
+                            grid_file_mpi_count[1] += sprintf (
+                                    grid_file_mpi_buffer[1], "%f ",
+                                    interp[i][j].Zmax);
                         }
                     }
 
@@ -1359,14 +1475,14 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
-                            grid_file_mpi_size[2] += sprintf (buf, "-9999 ");
+                            grid_file_mpi_count[2] += sprintf (
+                                    grid_file_mpi_buffer[2], "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
-                            grid_file_mpi_size[2] += sprintf (
-                                    buf, "%f ", interp[i][j].Zmean);
+                            grid_file_mpi_count[2] += sprintf (
+                                    grid_file_mpi_buffer[2], "%f ",
+                                    interp[i][j].Zmean);
                         }
                     }
 
@@ -1375,14 +1491,14 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
-                            grid_file_mpi_size[3] += sprintf (buf, "-9999 ");
+                            grid_file_mpi_count[3] += sprintf (
+                                    grid_file_mpi_buffer[3], "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
-                            grid_file_mpi_size[3] += sprintf (
-                                    buf, "%f ", interp[i][j].Zidw);
+                            grid_file_mpi_count[3] += sprintf (
+                                    grid_file_mpi_buffer[3], "%f ",
+                                    interp[i][j].Zidw);
                         }
                     }
 
@@ -1391,14 +1507,14 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
-                            grid_file_mpi_size[4] += sprintf (buf, "-9999 ");
+                            grid_file_mpi_count[4] += sprintf (
+                                    grid_file_mpi_buffer[4], "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
-                            grid_file_mpi_size[4] += sprintf (
-                                    buf, "%d ", interp[i][j].count);
+                            grid_file_mpi_count[4] += sprintf (
+                                    grid_file_mpi_buffer[4], "%d ",
+                                    interp[i][j].count);
                         }
                     }
 
@@ -1407,19 +1523,41 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
-                            grid_file_mpi_size[5] += sprintf (buf, "-9999 ");
+                            grid_file_mpi_count[5] += sprintf (
+                                    grid_file_mpi_buffer[5], "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
-                            grid_file_mpi_size[5] += sprintf (
-                                    buf, "%f ", interp[i][j].Zstd);
+                            grid_file_mpi_count[5] += sprintf (
+                                    grid_file_mpi_buffer[5], "%f ",
+                                    interp[i][j].Zstd);
+                        }
+                    }
+                }
+                //flushMpiBuffers (arcFiles, gridFiles, numTypes, mpi_buffer_size - 1024);
+
+                if (j == GRID_SIZE_X - 1)
+                {
+                    for (k = 0; k < numTypes; k++)
+                    {
+                        if (arcFiles[k] != 0)
+                        {
+                            arc_file_mpi_count[k] += sprintf (
+                                    arc_file_mpi_buffer[k] + arc_file_mpi_count[k],
+                                    "\n");
+                        }
+                        if (gridFiles[k] != 0)
+                        {
+                            grid_file_mpi_count[k] += sprintf (
+                                    grid_file_mpi_buffer[k]
+                                            + grid_file_mpi_count[k],
+                                    "\n");
                         }
                     }
                 }
             }
         }
+        /*
         if (rank == process_count - 1)
         {
             if (arcFiles != NULL)
@@ -1428,8 +1566,8 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 {
                     if (arcFiles[k] != NULL)
                     {
-                        buf[0] = 0;
-                        arc_file_mpi_size[k] += sprintf (buf, "\n");
+                        arc_file_mpi_size[k] += sprintf (arc_file_mpi_buffer[k]+ arc_file_mpi_count[k],
+                                                         "\n");
                     }
                 }
             }
@@ -1439,73 +1577,83 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                 {
                     if (gridFiles[k] != NULL)
                     {
-                        buf[0] = 0;
-                        grid_file_mpi_size[k] += sprintf (buf, "\n");
+                        grid_file_mpi_count[k] += sprintf (
+                                grid_file_mpi_buffer[k]+grid_file_mpi_count[k], "\n");
                     }
                 }
             }
         } //end if (rank == process_count - 1)
-
-
-
+        */
+        flushMpiBuffers (arcFiles, gridFiles, numTypes, 0);
 
     } // if (is_writer)
-
-
-
 
 #ifdef HAVE_GDAL
     GDALDataset **gdalFiles;
     char gdalFileName[1024];
 
     // open GDAL GeoTIFF files
-    if(outputFormat == OUTPUT_FORMAT_GDAL_GTIFF || outputFormat == OUTPUT_FORMAT_ALL)
+    if (outputFormat == OUTPUT_FORMAT_GDAL_GTIFF
+            || outputFormat == OUTPUT_FORMAT_ALL)
     {
-        GDALAllRegister();
+        GDALAllRegister ();
 
-        if((gdalFiles = (GDALDataset **)malloc(sizeof(GDALDataset *) *  numTypes)) == NULL)
+        if ((gdalFiles = (GDALDataset **) malloc (
+                sizeof(GDALDataset *) * numTypes)) == NULL)
         {
             cerr << "File array allocation error" << endl;
             return -1;
         }
 
-        for(i = 0; i < numTypes; i++)
+        for (i = 0; i < numTypes; i++)
         {
-            if(outputType & type[i])
+            if (outputType & type[i])
             {
-                strncpy(gdalFileName, outputName, sizeof(gdalFileName));
-                strncat(gdalFileName, ext[i], strlen(ext[i]));
-                strncat(gdalFileName, ".tif", strlen(".tif"));
+                strncpy (gdalFileName, outputName, sizeof(gdalFileName));
+                strncat (gdalFileName, ext[i], strlen (ext[i]));
+                strncat (gdalFileName, ".tif", strlen (".tif"));
 
                 char **papszMetadata;
                 const char *pszFormat = "GTIFF";
-                GDALDriver* tpDriver = GetGDALDriverManager()->GetDriverByName(pszFormat);
+                GDALDriver* tpDriver =
+                        GetGDALDriverManager ()->GetDriverByName (pszFormat);
 
                 if (tpDriver)
                 {
-                    papszMetadata = tpDriver->GetMetadata();
-                    if (CSLFetchBoolean(papszMetadata, GDAL_DCAP_CREATE, FALSE))
+                    papszMetadata = tpDriver->GetMetadata ();
+                    if (CSLFetchBoolean (papszMetadata, GDAL_DCAP_CREATE,
+                                         FALSE))
                     {
                         char **papszOptions = NULL;
-                        gdalFiles[i] = tpDriver->Create(gdalFileName, GRID_SIZE_X, GRID_SIZE_Y, 1, GDT_Float32, papszOptions);
+                        gdalFiles[i] = tpDriver->Create (gdalFileName,
+                                                         GRID_SIZE_X,
+                                                         GRID_SIZE_Y, 1,
+                                                         GDT_Float32,
+                                                         papszOptions);
                         if (gdalFiles[i] == NULL)
                         {
                             cerr << "File open error: " << gdalFileName << endl;
                             return -1;
-                        } else {
+                        }
+                        else
+                        {
                             if (adfGeoTransform)
-                                gdalFiles[i]->SetGeoTransform(adfGeoTransform);
+                                gdalFiles[i]->SetGeoTransform (adfGeoTransform);
                             if (wkt)
-                                gdalFiles[i]->SetProjection(wkt);
+                                gdalFiles[i]->SetProjection (wkt);
                         }
                     }
                 }
-            } else {
+            }
+            else
+            {
                 gdalFiles[i] = NULL;
             }
         }
-    } else {
-      gdalFiles = NULL;
+    }
+    else
+    {
+        gdalFiles = NULL;
     }
 
     if (gdalFiles != NULL)
@@ -1514,23 +1662,24 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
         {
             if (gdalFiles[i] != NULL)
             {
-                float *poRasterData = new float[GRID_SIZE_X*GRID_SIZE_Y];
-                for (int j = 0; j < GRID_SIZE_X*GRID_SIZE_Y; j++)
+                float *poRasterData = new float[GRID_SIZE_X * GRID_SIZE_Y];
+                for (int j = 0; j < GRID_SIZE_X * GRID_SIZE_Y; j++)
                 {
                     poRasterData[j] = 0;
                 }
 
-                for(j = GRID_SIZE_Y - 1; j >= 0; j--)
+                for (j = GRID_SIZE_Y - 1; j >= 0; j--)
                 {
-                    for(k = 0; k < GRID_SIZE_X; k++)
+                    for (k = 0; k < GRID_SIZE_X; k++)
                     {
                         int index = j * GRID_SIZE_X + k;
 
-                        if(interp[k][j].empty == 0 &&
-                                interp[k][j].filled == 0)
+                        if (interp[k][j].empty == 0 && interp[k][j].filled == 0)
                         {
                             poRasterData[index] = -9999.f;
-                        } else {
+                        }
+                        else
+                        {
                             switch (i)
                             {
                                 case 0:
@@ -1560,13 +1709,15 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
                         }
                     }
                 }
-                GDALRasterBand *tBand = gdalFiles[i]->GetRasterBand(1);
-                tBand->SetNoDataValue(-9999.f);
+                GDALRasterBand *tBand = gdalFiles[i]->GetRasterBand (1);
+                tBand->SetNoDataValue (-9999.f);
 
                 if (GRID_SIZE_X > 0 && GRID_SIZE_Y > 0)
-                    tBand->RasterIO(GF_Write, 0, 0, GRID_SIZE_X, GRID_SIZE_Y, poRasterData, GRID_SIZE_X, GRID_SIZE_Y, GDT_Float32, 0, 0);
-                GDALClose((GDALDatasetH) gdalFiles[i]);
-                delete [] poRasterData;
+                    tBand->RasterIO (GF_Write, 0, 0, GRID_SIZE_X, GRID_SIZE_Y,
+                                     poRasterData, GRID_SIZE_X, GRID_SIZE_Y,
+                                     GDT_Float32, 0, 0);
+                GDALClose ((GDALDatasetH) gdalFiles[i]);
+                delete[] poRasterData;
             }
         }
     }
@@ -1583,16 +1734,14 @@ int MpiInterp::outputFile(char *outputName, int outputFormat, unsigned int outpu
         }
     }
 
-    if(gridFiles != NULL)
+    if (gridFiles != NULL)
     {
-        for(i = 0; i < numTypes; i++)
+        for (i = 0; i < numTypes; i++)
         {
-            if(gridFiles[i] != NULL)
-                MPI_File_close(&(gridFiles[i]));
+            if (gridFiles[i] != NULL)
+                MPI_File_close (&(gridFiles[i]));
         }
     }
-
-
 
     return 0;
 }
