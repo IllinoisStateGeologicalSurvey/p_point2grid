@@ -983,7 +983,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
 
         // add up the write size for all files for this worker
         int row_count = w_row_end_index - w_row_start_index + 1;
-        for (i = 0; i < row_count; i++)
+        for (i = row_count - 1; i >= 0; i--)
         {
             for (j = 0; j < GRID_SIZE_X; j++)
             {
@@ -994,12 +994,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
                             arc_file_mpi_size[0] += sprintf (buf, "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
                             arc_file_mpi_size[0] += sprintf (buf, "%f ",
                                                              interp[i][j].Zmin);
                         }
@@ -1010,12 +1008,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
                             arc_file_mpi_size[1] += sprintf (buf, "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
                             arc_file_mpi_size[1] += sprintf (buf, "%f ",
                                                              interp[i][j].Zmax);
                         }
@@ -1026,12 +1022,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
                             arc_file_mpi_size[2] += sprintf (buf, "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
                             arc_file_mpi_size[2] += sprintf (
                                     buf, "%f ", interp[i][j].Zmean);
                         }
@@ -1042,12 +1036,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
                             arc_file_mpi_size[3] += sprintf (buf, "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
                             arc_file_mpi_size[3] += sprintf (buf, "%f ",
                                                              interp[i][j].Zidw);
                         }
@@ -1058,12 +1050,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
                             arc_file_mpi_size[4] += sprintf (buf, "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
                             arc_file_mpi_size[4] += sprintf (
                                     buf, "%d ", interp[i][j].count);
                         }
@@ -1074,12 +1064,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
                             arc_file_mpi_size[5] += sprintf (buf, "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
                             arc_file_mpi_size[5] += sprintf (buf, "%f ",
                                                              interp[i][j].Zstd);
                         }
@@ -1093,12 +1081,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
                             grid_file_mpi_size[0] += sprintf (buf, "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
                             grid_file_mpi_size[0] += sprintf (
                                     buf, "%f ", interp[i][j].Zmin);
                         }
@@ -1109,12 +1095,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
                             grid_file_mpi_size[1] += sprintf (buf, "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
                             grid_file_mpi_size[1] += sprintf (
                                     buf, "%f ", interp[i][j].Zmax);
                         }
@@ -1125,12 +1109,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
                             grid_file_mpi_size[2] += sprintf (buf, "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
                             grid_file_mpi_size[2] += sprintf (
                                     buf, "%f ", interp[i][j].Zmean);
                         }
@@ -1141,12 +1123,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
                             grid_file_mpi_size[3] += sprintf (buf, "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
                             grid_file_mpi_size[3] += sprintf (
                                     buf, "%f ", interp[i][j].Zidw);
                         }
@@ -1157,12 +1137,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
                             grid_file_mpi_size[4] += sprintf (buf, "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
                             grid_file_mpi_size[4] += sprintf (
                                     buf, "%d ", interp[i][j].count);
                         }
@@ -1173,68 +1151,37 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     {
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
-                            buf[0] = 0;
                             grid_file_mpi_size[5] += sprintf (buf, "-9999 ");
                         }
                         else
                         {
-                            buf[0] = 0;
                             grid_file_mpi_size[5] += sprintf (
                                     buf, "%f ", interp[i][j].Zstd);
                         }
                     }
                 }
 
-                if (j == GRID_SIZE_X - 1)
+                if (j == GRID_SIZE_X - 1) // put a newline after each row
                 {
                     for (k = 0; k < numTypes; k++)
                     {
-
                         if (arcFiles[k] != 0)
                         {
-                            buf[0] = 0;
                             arc_file_mpi_size[k] += sprintf(buf, "\n");
                         }
                         if (gridFiles[k] != 0)
                         {
-                            buf[0]=0;
                             grid_file_mpi_size[k] += sprintf(buf, "\n");
                         }
                     }
                 }
             }
         }
-        /*
-        if (rank == process_count - 1)
-        {
-            if (arcFiles != NULL)
-            {
-                for (k = 0; k < numTypes; k++)
-                {
-                    if (arcFiles[k] != NULL)
-                    {
-                        buf[0] = 0;
-                        arc_file_mpi_size[k] += sprintf (buf, "\n");
-                    }
-                }
-            }
-            if (gridFiles != NULL)
-            {
-                for (k = 0; k < numTypes; k++)
-                {
-                    if (gridFiles[k] != NULL)
-                    {
-                        buf[0] = 0;
-                        grid_file_mpi_size[k] += sprintf (buf, "\n");
-                    }
-                }
-            }
-        } //end if (rank == process_count - 1)
-        */
+
     } // end if(is_writer)
 
-    // Gather, calculate, and set each worker's offset
-
+    // ********** Gather, calculate, and set each worker's offset **********
+    // todo, construct new communicator for just the write processes
     MPI_Barrier (MPI_COMM_WORLD);
 
     if (arcFiles != NULL)
@@ -1305,7 +1252,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
             }
         }
 
-        //**************************** write the file  *********
+        // ********** Write the file **********
         // initialize mpi_size for each file
         if (arcFiles != NULL)
         {
@@ -1329,7 +1276,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 }
             }
         }
-        // add up the write size for all files for this worker
+        // write the file
         int row_count = w_row_end_index - w_row_start_index + 1;
         for (i = row_count - 1; i >= 0; i--)
         {
@@ -1361,12 +1308,12 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
                             arc_file_mpi_count[1] += sprintf (
-                                    arc_file_mpi_buffer[1], "-9999 ");
+                                    arc_file_mpi_buffer[1]+arc_file_mpi_count[1], "-9999 ");
                         }
                         else
                         {
                             arc_file_mpi_count[1] += sprintf (
-                                    arc_file_mpi_buffer[1], "%f ",
+                                    arc_file_mpi_buffer[1]+arc_file_mpi_count[1], "%f ",
                                     interp[i][j].Zmax);
                         }
                     }
@@ -1377,12 +1324,12 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
                             arc_file_mpi_count[2] += sprintf (
-                                    arc_file_mpi_buffer[2], "-9999 ");
+                                    arc_file_mpi_buffer[2]+arc_file_mpi_count[2], "-9999 ");
                         }
                         else
                         {
                             arc_file_mpi_count[2] += sprintf (
-                                    arc_file_mpi_buffer[2], "%f ",
+                                    arc_file_mpi_buffer[2]+arc_file_mpi_count[2], "%f ",
                                     interp[i][j].Zmean);
                         }
                     }
@@ -1393,12 +1340,12 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
                             arc_file_mpi_count[3] += sprintf (
-                                    arc_file_mpi_buffer[3], "-9999 ");
+                                    arc_file_mpi_buffer[3]+arc_file_mpi_count[3], "-9999 ");
                         }
                         else
                         {
                             arc_file_mpi_count[3] += sprintf (
-                                    arc_file_mpi_buffer[3], "%f ",
+                                    arc_file_mpi_buffer[3]+arc_file_mpi_count[3], "%f ",
                                     interp[i][j].Zidw);
                         }
                     }
@@ -1409,12 +1356,12 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
                             arc_file_mpi_count[4] += sprintf (
-                                    arc_file_mpi_buffer[4], "-9999 ");
+                                    arc_file_mpi_buffer[4]+arc_file_mpi_count[4], "-9999 ");
                         }
                         else
                         {
                             arc_file_mpi_count[4] += sprintf (
-                                    arc_file_mpi_buffer[4], "%d ",
+                                    arc_file_mpi_buffer[4]+arc_file_mpi_count[4], "%d ",
                                     interp[i][j].count);
                         }
                     }
@@ -1425,12 +1372,12 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
                             arc_file_mpi_count[5] += sprintf (
-                                    arc_file_mpi_buffer[5], "-9999 ");
+                                    arc_file_mpi_buffer[5]+arc_file_mpi_count[5], "-9999 ");
                         }
                         else
                         {
                             arc_file_mpi_count[5] += sprintf (
-                                    arc_file_mpi_buffer[5], "%f ",
+                                    arc_file_mpi_buffer[5]+arc_file_mpi_count[5], "%f ",
                                     interp[i][j].Zstd);
                         }
                     }
@@ -1460,12 +1407,12 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
                             grid_file_mpi_count[1] += sprintf (
-                                    grid_file_mpi_buffer[1], "-9999 ");
+                                    grid_file_mpi_buffer[1]+grid_file_mpi_count[1], "-9999 ");
                         }
                         else
                         {
                             grid_file_mpi_count[1] += sprintf (
-                                    grid_file_mpi_buffer[1], "%f ",
+                                    grid_file_mpi_buffer[1]+grid_file_mpi_count[1], "%f ",
                                     interp[i][j].Zmax);
                         }
                     }
@@ -1476,12 +1423,12 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
                             grid_file_mpi_count[2] += sprintf (
-                                    grid_file_mpi_buffer[2], "-9999 ");
+                                    grid_file_mpi_buffer[2]+grid_file_mpi_count[2], "-9999 ");
                         }
                         else
                         {
                             grid_file_mpi_count[2] += sprintf (
-                                    grid_file_mpi_buffer[2], "%f ",
+                                    grid_file_mpi_buffer[2]+grid_file_mpi_count[2], "%f ",
                                     interp[i][j].Zmean);
                         }
                     }
@@ -1492,12 +1439,12 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
                             grid_file_mpi_count[3] += sprintf (
-                                    grid_file_mpi_buffer[3], "-9999 ");
+                                    grid_file_mpi_buffer[3]+grid_file_mpi_count[3], "-9999 ");
                         }
                         else
                         {
                             grid_file_mpi_count[3] += sprintf (
-                                    grid_file_mpi_buffer[3], "%f ",
+                                    grid_file_mpi_buffer[3]+grid_file_mpi_count[3], "%f ",
                                     interp[i][j].Zidw);
                         }
                     }
@@ -1508,12 +1455,12 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
                             grid_file_mpi_count[4] += sprintf (
-                                    grid_file_mpi_buffer[4], "-9999 ");
+                                    grid_file_mpi_buffer[4]+grid_file_mpi_count[4], "-9999 ");
                         }
                         else
                         {
                             grid_file_mpi_count[4] += sprintf (
-                                    grid_file_mpi_buffer[4], "%d ",
+                                    grid_file_mpi_buffer[4]+grid_file_mpi_count[4], "%d ",
                                     interp[i][j].count);
                         }
                     }
@@ -1524,12 +1471,12 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         if (interp[i][j].empty == 0 && interp[i][j].filled == 0)
                         {
                             grid_file_mpi_count[5] += sprintf (
-                                    grid_file_mpi_buffer[5], "-9999 ");
+                                    grid_file_mpi_buffer[5]+grid_file_mpi_count[5], "-9999 ");
                         }
                         else
                         {
                             grid_file_mpi_count[5] += sprintf (
-                                    grid_file_mpi_buffer[5], "%f ",
+                                    grid_file_mpi_buffer[5]+grid_file_mpi_count[5], "%f ",
                                     interp[i][j].Zstd);
                         }
                     }
@@ -1557,33 +1504,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 }
             }
         }
-        /*
-        if (rank == process_count - 1)
-        {
-            if (arcFiles != NULL)
-            {
-                for (k = 0; k < numTypes; k++)
-                {
-                    if (arcFiles[k] != NULL)
-                    {
-                        arc_file_mpi_size[k] += sprintf (arc_file_mpi_buffer[k]+ arc_file_mpi_count[k],
-                                                         "\n");
-                    }
-                }
-            }
-            if (gridFiles != NULL)
-            {
-                for (k = 0; k < numTypes; k++)
-                {
-                    if (gridFiles[k] != NULL)
-                    {
-                        grid_file_mpi_count[k] += sprintf (
-                                grid_file_mpi_buffer[k]+grid_file_mpi_count[k], "\n");
-                    }
-                }
-            }
-        } //end if (rank == process_count - 1)
-        */
+
         flushMpiBuffers (arcFiles, gridFiles, numTypes, 0);
 
     } // if (is_writer)
