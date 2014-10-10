@@ -43,4 +43,5 @@ $(ODIR)/%.o: $(SDIR)/%.cpp
 .PHONY: clean
 
 clean:
-	rm -f $(ODIR)/*.o ./.depend pp2p core
+	rm -f $(ODIR)/*.o ./.depend pp2g core points2grid
+	

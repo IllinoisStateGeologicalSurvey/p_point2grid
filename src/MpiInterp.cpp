@@ -1272,7 +1272,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 if (arcFiles[i] != NULL)
                 {
                     int j;
-                    for (j = mpi_reader_count; j < rank; j++)
+                    for (j = process_count - 1; j > rank; j--)
                     {
                         arc_file_mpi_offset[i] += arc_file_mpi_sizes[i][j];
                     }
@@ -1292,7 +1292,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 if (gridFiles[i] != NULL)
                 {
                     int j;
-                    for (j = mpi_reader_count; j < rank; j++)
+                    for (j = process_count -1; j > rank; j--)
                     {
                         grid_file_mpi_offset[i] += grid_file_mpi_sizes[i][j];
                     }
@@ -1331,7 +1331,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
         }
         // add up the write size for all files for this worker
         int row_count = w_row_end_index - w_row_start_index + 1;
-        for (i = 0; i < row_count; i++)
+        for (i = row_count - 1; i >= 0; i--)
         {
             for (j = 0; j < GRID_SIZE_X; j++)
             {
