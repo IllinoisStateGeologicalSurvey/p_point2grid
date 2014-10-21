@@ -74,14 +74,16 @@ MpiInterp::MpiInterp(double dist_x, double dist_y,
 {
     rank = _rank;
     process_count = _process_count;
+
     comm_done = 0;
-    mpi_reader_count = 1;
-    mpi_buffer_size = 1000000;
+
+    reader_count_param = 10;
+    mpi_buffer_size = 10000;
     is_reader = 0;
     is_writer = 0;
     readers = (int *) malloc(sizeof(int)*process_count);
     writers = (int *) malloc(sizeof(int)*process_count);
-
+    read_done = (int *) malloc(sizeof(int)*process_count);
     GRID_DIST_X = dist_x;
     GRID_DIST_Y = dist_y;
 
@@ -108,18 +110,19 @@ MpiInterp::~MpiInterp()
 int MpiInterp::init()
 {
     int i, j;
+    reader_count = writer_count = 0;
     w_row_start_index = w_row_end_index = 0;
-    row_stride = GRID_SIZE_Y/(process_count-mpi_reader_count) + 1;
+    row_stride = GRID_SIZE_Y/(process_count-reader_count_param) + 1;
 
-    if(rank<mpi_reader_count)
+    if(rank<reader_count_param)
     {
         is_reader = 1;
     }
 
-    if(rank >= mpi_reader_count)
+    if(rank >= reader_count_param) //
     {
-        w_row_start_index = (rank - mpi_reader_count) * row_stride;
-        w_row_end_index =   ((rank + 1) - mpi_reader_count) * row_stride -1;
+        w_row_start_index = (rank - reader_count_param) * row_stride;
+        w_row_end_index =   ((rank + 1) - reader_count_param) * row_stride -1;
         if(w_row_start_index < GRID_SIZE_Y-1 && w_row_end_index <= GRID_SIZE_Y-1){
             is_writer = 1;
         }
@@ -128,7 +131,7 @@ int MpiInterp::init()
             is_writer = 1;
             w_row_end_index = GRID_SIZE_Y-1;
         }
-        else
+        else // left over processes that are neither readers or writers
         {
             is_writer = w_row_start_index = w_row_start_index = 0;
 
@@ -174,8 +177,23 @@ int MpiInterp::init()
         }
     }
     MPI_Barrier(MPI_COMM_WORLD);
+    // all processes need to know which are readers and which are writers
     MPI_Allgather(&is_reader, 1, MPI_INT, readers, 1, MPI_INT, MPI_COMM_WORLD);
     MPI_Allgather(&is_writer, 1, MPI_INT, writers, 1, MPI_INT, MPI_COMM_WORLD);
+    for(i=0; i<process_count; i++)
+    {
+        if(readers[i])
+        {
+            reader_count++;
+        }
+        if(writers[i])
+        {
+            writer_count++;
+        }
+        // readers will set read_done[rank] = 1 when they are finished readin
+        read_done[i] = 0;
+    }
+
 
     //for(i=0; i<process_count; i++){
     //    if(readers[i]) printf("reader, rank %i %i\n", i, rank);
@@ -530,7 +548,7 @@ void MpiInterp::update_fourth_quadrant(double data_z, int base_x, int base_y, do
 
 int MpiInterp::get_target_rank(int row_index){
 
-    int rtn = row_index/row_stride + mpi_reader_count;
+    int rtn = row_index/row_stride + reader_count;
     if (rtn < process_count)
     {
         return rtn;
@@ -553,9 +571,9 @@ void MpiInterp::updateGridPointSend(int target_rank, int x, int y, double data_z
 
     //printf("-----------------------------rank %i, target_rank %i\n", rank, target_rank);
     //printf ("before comm_done %i, rank %i\n", comm_done, rank);
-    MPI_Send(&comm_done, 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
+    MPI_Send(&(read_done[rank]), 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
     //printf ("comm_done %i, rank %i\n", comm_done, rank);
-    if (!comm_done)
+    if (!read_done[rank])
     {
         MPI_Send (&comm_x, 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
         MPI_Send (&comm_y, 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
@@ -570,21 +588,34 @@ void MpiInterp::updateGridPointSend(int target_rank, int x, int y, double data_z
 void MpiInterp::updateGridPointRecv()
 {
     MPI_Status status;
+    int comm_done;
+    int i;
 
-    while(!comm_done){
-        MPI_Recv(&comm_done, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
-        //printf ("comm_done %i, rank %i\n", comm_done, rank);
+    while(true){
+        MPI_Recv(&comm_done, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, &status);
         if(comm_done)
         {
-            break;
+            read_done[status.MPI_SOURCE] = 1;
         }
         else
         {
-            MPI_Recv(&comm_x, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
-            MPI_Recv(&comm_y, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
-            MPI_Recv(&comm_data_z, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, &status);
-            MPI_Recv(&comm_distance, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, &status);
+            MPI_Recv(&comm_x, 1, MPI_INT, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
+            MPI_Recv(&comm_y, 1, MPI_INT, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
+            MPI_Recv(&comm_data_z, 1, MPI_DOUBLE, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
+            MPI_Recv(&comm_distance, 1, MPI_DOUBLE, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
             updateGridPoint(comm_x, comm_y, comm_data_z, comm_distance);
+        }
+        // determine if all the readers are done sending points
+        comm_done = 1;
+        for(i=0; i<reader_count;i++)
+        {
+            if(read_done[i] == 0){
+                comm_done = 0;
+            }
+        }
+        if(comm_done)
+        {
+            break;
         }
     }
 
@@ -604,7 +635,7 @@ void MpiInterp::updateGridPoint(int x, int y, double data_z, double distance)
     //todo update to work with more than one reader
     //int reader_count = 1;
 
-    y -= (rank-mpi_reader_count)*row_stride;
+    y -= (rank-reader_count)*row_stride;
 
     if(x<0 || x>=GRID_SIZE_X|| y<0 || y>= (w_row_end_index - w_row_start_index + 1 ))
     {
@@ -668,6 +699,7 @@ void MpiInterp::flushMpiBuffers (MPI_File *arcFiles, MPI_File *gridFiles,
 {
     int k = 0;
     MPI_Status status;
+
     if (arcFiles != NULL)
     {
         for (k = 0; k < numTypes; k++)
@@ -678,7 +710,7 @@ void MpiInterp::flushMpiBuffers (MPI_File *arcFiles, MPI_File *gridFiles,
                 {
                     MPI_File_write (arcFiles[k], arc_file_mpi_buffer[k],
                                     arc_file_mpi_count[k], MPI_CHAR, &status);
-                    printf("%i %lu %i\n", arc_file_mpi_count[k], strlen(arc_file_mpi_buffer[k]), rank);
+                    //printf("arc %i %lu %i\n", arc_file_mpi_count[k], strlen(arc_file_mpi_buffer[k]), rank);
                     arc_file_mpi_buffer[k][0] = 0;
                     arc_file_mpi_count[k] = 0;
 
@@ -686,6 +718,7 @@ void MpiInterp::flushMpiBuffers (MPI_File *arcFiles, MPI_File *gridFiles,
             }
         }
     }
+
     if (gridFiles != NULL)
     {
         for (k = 0; k < numTypes; k++)
@@ -696,8 +729,9 @@ void MpiInterp::flushMpiBuffers (MPI_File *arcFiles, MPI_File *gridFiles,
                 {
                     MPI_File_write (gridFiles[k], grid_file_mpi_buffer[k],
                                     grid_file_mpi_count[k], MPI_CHAR, &status);
+                    //printf("grid %i %lu %i\n", grid_file_mpi_count[k], strlen(grid_file_mpi_buffer[k]), rank);
                     grid_file_mpi_buffer[k][0] = 0;
-                    grid_file_mpi_count[0] = 0;
+                    grid_file_mpi_count[k] = 0;
                 }
             }
         }
@@ -715,7 +749,9 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                        const char* wkt)
 {
     int i, j, k;
-
+    // reader_count is the first writer rank, reader ranks are 0 through reader_count-1
+    int first_writer_rank = reader_count;
+    int last_writer_rank = first_writer_rank + writer_count - 1;
     //FILE **arcFiles;
     MPI_File *arcFiles;
     char arcFileName[1024];
@@ -731,7 +767,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
             OUTPUT_TYPE_IDW, OUTPUT_TYPE_DEN, OUTPUT_TYPE_STD };
     int numTypes = 6;
 
-    // open ArcGIS files
+
     if (outputFormat == OUTPUT_FORMAT_ARC_ASCII
             || outputFormat == OUTPUT_FORMAT_ALL)
     {
@@ -780,7 +816,6 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
         arcFiles = NULL;
     }
 
-    // open Grid ASCII files
     if (outputFormat == OUTPUT_FORMAT_GRID_ASCII
             || outputFormat == OUTPUT_FORMAT_ALL)
     {
@@ -831,7 +866,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
     }
     MPI_Barrier (MPI_COMM_WORLD);
 
-    if (rank == 0)
+    if (rank == first_writer_rank)
     {
         // print ArcGIS headers
         if (arcFiles != NULL)
@@ -906,7 +941,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                                        &(grid_file_mpi_offset[i]));
             }
         }
-    } // if(rank == 0)
+    } // if(rank == first_writer_rank)
 
     MPI_Barrier (MPI_COMM_WORLD);
 
@@ -916,7 +951,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
         {
             if (arcFiles[i] != NULL)
             {
-                MPI_Bcast (&(arc_file_mpi_offset[i]), 1, MPI_OFFSET, 0,
+                MPI_Bcast (&(arc_file_mpi_offset[i]), 1, MPI_OFFSET, first_writer_rank,
                 MPI_COMM_WORLD);
             }
         }
@@ -928,7 +963,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
         {
             if (gridFiles[i] != NULL)
             {
-                MPI_Bcast (&(grid_file_mpi_offset[i]), 1, MPI_OFFSET, 0,
+                MPI_Bcast (&(grid_file_mpi_offset[i]), 1, MPI_OFFSET, first_writer_rank,
                 MPI_COMM_WORLD);
             }
         }
@@ -1219,7 +1254,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 if (arcFiles[i] != NULL)
                 {
                     int j;
-                    for (j = process_count - 1; j > rank; j--)
+                    for (j = last_writer_rank; j > rank; j--)
                     {
                         arc_file_mpi_offset[i] += arc_file_mpi_sizes[i][j];
                     }
@@ -1239,7 +1274,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 if (gridFiles[i] != NULL)
                 {
                     int j;
-                    for (j = process_count -1; j > rank; j--)
+                    for (j = last_writer_rank; j > rank; j--)
                     {
                         grid_file_mpi_offset[i] += grid_file_mpi_sizes[i][j];
                     }
@@ -1282,6 +1317,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
         {
             for (j = 0; j < GRID_SIZE_X; j++)
             {
+
                 if (arcFiles != NULL)
                 {
                     // Zmin
@@ -1481,12 +1517,13 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         }
                     }
                 }
-                //flushMpiBuffers (arcFiles, gridFiles, numTypes, mpi_buffer_size - 1024);
+
 
                 if (j == GRID_SIZE_X - 1)
                 {
                     for (k = 0; k < numTypes; k++)
                     {
+
                         if (arcFiles[k] != 0)
                         {
                             arc_file_mpi_count[k] += sprintf (
@@ -1500,8 +1537,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                                             + grid_file_mpi_count[k],
                                     "\n");
                         }
+
                     }
                 }
+                flushMpiBuffers (arcFiles, gridFiles, numTypes, mpi_buffer_size - 1024);
             }
         }
 

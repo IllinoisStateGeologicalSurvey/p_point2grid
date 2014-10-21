@@ -60,11 +60,16 @@ public:
     // mpi adds - start
     virtual void updateGridPointSend(int target_rank, int x, int y, double data_z, double distance){};
     virtual void updateGridPointRecv(){};
+
     int comm_done;
+
     virtual int getIsReader(){return 1;};
     virtual int getIsWriter(){return 1;};
     virtual int* getReaders(){return 0;};
     virtual int* getWriters(){return 0;};
+    virtual int getReaderCount(){return 1;};
+    virtual int getWriterCount(){return 1;};
+    virtual int* getReadDone(){return 0;};
 
     // mpi adds - finish
 protected:

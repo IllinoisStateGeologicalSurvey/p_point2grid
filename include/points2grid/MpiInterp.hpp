@@ -78,7 +78,9 @@ public:
     virtual int getIsWriter(){return is_writer;};
     virtual int* getReaders(){return readers;};
     virtual int* getWriters(){return writers;};
-
+    virtual int* getReadDone(){ return read_done; };
+    virtual int  getReaderCount(){ return reader_count; };
+    virtual int  getWriterCount(){ return writer_count; };
 
 private:
     int rank;
@@ -99,6 +101,8 @@ private:
     int outputFile(char *outputName, int outputFormat, unsigned int outputType, double *adfGeoTransform, const char* wkt);
     void flushMpiBuffers (MPI_File *arcFiles, MPI_File *gridFiles, int numTypes, int max_buffer_size);
 
+    int reader_count_param;
+
 
     int comm_x;
     int comm_y;
@@ -108,11 +112,14 @@ private:
     int w_row_start_index; // set only for workers
     int w_row_end_index; // set only for workers
     int get_target_rank(int grid_index);
-    int mpi_reader_count;
+    int reader_count;
+    int writer_count;
     int is_reader;
     int is_writer;
     int *readers; //  array process_count long that holds 0 or 1 flags indicating whether a process is a reader, rank order
     int *writers; //  array process_count long that holds 0 or 1 flags indicating whether a process is a writer, rank order
+    int *read_done; //array process_count long that holds 0 or 1 flags indicating whether a process is done reading points,
+                    // used by readers to indicate they are done sending points to writers
     // writing
     int mpi_buffer_size;
 

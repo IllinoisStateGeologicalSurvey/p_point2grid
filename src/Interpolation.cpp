@@ -306,6 +306,16 @@ int Interpolation::interpolation(char *inputName,
 
             size_t count = las.points_count ();
             size_t index (0);
+            size_t stride = count/interp->getReaderCount();
+            size_t left_over_count = count%interp->getReaderCount();
+            index = rank * stride;
+            count = (rank+1) *stride;
+            if(rank == interp->getReaderCount()-1)
+            {
+               count += left_over_count;
+            }
+
+
             while (index < count)
             {
                 data_x = las.getX (index);
@@ -323,18 +333,21 @@ int Interpolation::interpolation(char *inputName,
                 }
                 index++;
             }
-            interp->comm_done = 1;
-            if (process_count > 1)
+            interp->getReadDone()[rank] = 1;
+
+            //interp->comm_done = 1;
+            //if (process_count > 1)
+            //{
+            // tell all writers that this reader is finished sending points
+            int i;
+            for (i = 0; i<process_count; i++)
             {
-                int i;
-                for (i = 1; i < process_count; i++)
+                if(interp->getWriters()[i])
                 {
-                    if(interp->getWriters()[i])
-                    {
-                        interp->updateGridPointSend (i, 1, 1, 1, 1);
-                    }
+                    interp->updateGridPointSend (i, 1, 1, 1, 1);
                 }
             }
+            //}
         }
         else if (interp->getIsWriter())// rank is a writer
         {
