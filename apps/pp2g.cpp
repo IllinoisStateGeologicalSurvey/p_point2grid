@@ -80,6 +80,9 @@ int main(int argc, char **argv)
 
     int rank = 0;
     int process_count = 1;
+    int reader_count = 1;
+    int buffer_size = 10000;
+    int is_mpi = 0;
 
     clock_t t0, t1;
 
@@ -117,7 +120,9 @@ int main(int argc, char **argv)
      "'las' expects input point cloud in LAS format (default)")
     ("interpolation_mode", po::value<std::string>()->default_value("auto"), "'incore' stores working data in memory\n"
      "'outcore' stores working data on the filesystem\n"
-     "'auto' (default) guesses based on the size of the data file");
+     "'auto' (default) guesses based on the size of the data file")
+     ("parallel,p", po::value<int>(), "run with MPI Interp, argument is number of reader processes, default is 1")
+     ("buffer_size,b", po::value<int>(), "size of each MPI writer processes write buffer in bytes, default is 10000 bytes");
 
 
     df.add_options()
@@ -317,6 +322,14 @@ int main(int argc, char **argv)
         if(type == 0)
             type = OUTPUT_TYPE_ALL;
 
+        if(vm.count("parallel")) {
+            reader_count = vm["parallel"].as<int>();
+            is_mpi =1;
+        }
+        if(vm.count("buffer_size")) {
+            buffer_size = vm["buffer_size"].as<int>();
+        }
+
 
 #ifdef CURL_FOUND
         // download file from URL, and set input name
@@ -361,17 +374,47 @@ int main(int argc, char **argv)
         }
 #endif
 
-        cout << "Parameters ************************" << endl;
-        cout << "inputName: '" << inputName << "'" << endl;
-        cout << "input_format: " << input_format << endl;
-        cout << "outputName: '" << outputName << "'" << endl;
-        cout << "GRID_DIST_X: " << GRID_DIST_X << endl;
-        cout << "GRID_DIST_Y: " << GRID_DIST_Y << endl;
-        cout << "searchRadius: " << searchRadius << endl;
-        cout << "output_format: " << output_format << endl;
-        cout << "type: " << type << endl;
-        cout << "fill window size: " << window_size << endl;
-        cout << "************************************" << endl;
+        if (is_mpi)
+        {
+            interpolation_mode = INTERP_MPI;
+            MPI_Init (&argc, &argv);
+            MPI_Comm_size (MPI_COMM_WORLD, &process_count);
+            MPI_Comm_rank (MPI_COMM_WORLD, &rank);
+            if (reader_count >= process_count)
+            {
+                if (rank == 0)
+                {
+                    printf ("process count = %i is not greater than reader process count = %i.\n",
+                            process_count, reader_count);
+                    printf ("decrease --parallel(-p) parameter value or add processes.\n");
+                }
+
+                MPI_Finalize ();
+                return 0;
+            }
+
+            printf ("MPI task %d has started...\n", rank);
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (rank == 0)
+        {
+            cout << "Parameters ************************" << endl;
+            cout << "inputName: '" << inputName << "'" << endl;
+            cout << "input_format: " << input_format << endl;
+            cout << "outputName: '" << outputName << "'" << endl;
+            cout << "GRID_DIST_X: " << GRID_DIST_X << endl;
+            cout << "GRID_DIST_Y: " << GRID_DIST_Y << endl;
+            cout << "searchRadius: " << searchRadius << endl;
+            cout << "output_format: " << output_format << endl;
+            cout << "type: " << type << endl;
+            cout << "fill window size: " << window_size << endl;
+            cout << "parallel interp, reader process count: " << reader_count
+                    << endl;
+            cout << "parallel interp, writer buffer size: " << buffer_size
+                    << endl;
+            cout << "************************************" << endl;
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
     }
     catch (std::exception& e) {
         cerr << "error: " << e.what() << endl;
@@ -381,19 +424,8 @@ int main(int argc, char **argv)
 
     t0 = clock();
 
-    interpolation_mode = INTERP_MPI;
-
-    if (interpolation_mode == INTERP_MPI)
-    {
-        MPI_Init (&argc, &argv);
-        MPI_Comm_size (MPI_COMM_WORLD, &process_count);
-        MPI_Comm_rank (MPI_COMM_WORLD, &rank);
-        printf ("MPI task %d has started...\n", rank);
-    }
-
-
     Interpolation *ip = new Interpolation(GRID_DIST_X, GRID_DIST_Y, searchRadius,
-                                          window_size, interpolation_mode, rank, process_count);
+                                          window_size, interpolation_mode, rank, process_count, reader_count, buffer_size);
 
     if(ip->init(inputName, input_format) < 0)
     {
@@ -402,7 +434,7 @@ int main(int argc, char **argv)
     }
 
     t1 = clock();
-    printf("Init + Min/Max time: %10.2f\n", (double)(t1 - t0)/CLOCKS_PER_SEC);
+    //printf("Init + Min/Max time: %10.2f\n", (double)(t1 - t0)/CLOCKS_PER_SEC);
 
     t0 = clock();
     if(ip->interpolation(inputName, outputName, input_format, output_format, type) < 0)
@@ -414,8 +446,8 @@ int main(int argc, char **argv)
     t1 = clock();
     //printf("DEM generation + Output time: %10.2f\n", (double)(t1 - t0)/CLOCKS_PER_SEC);
 
-    printf("# of data: %d\n", ip->getDataCount());
-    printf("dimension: %d x %d\n", ip->getGridSizeX(), ip->getGridSizeY());
+    //printf("# of data: %d\n", ip->getDataCount());
+    //printf("dimension: %d x %d\n", ip->getGridSizeX(), ip->getGridSizeY());
 
     MPI_Finalize();
     //delete ip;

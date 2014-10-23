@@ -65,7 +65,7 @@ public:
                  double _min_x, double _max_x,
                  double _min_y, double _max_y,
                  int _window_size,
-                 int _rank, int _process_count);
+                 int _rank, int _process_count, int _reader_count, int _buffer_size);
     ~MpiInterp();
 
     virtual int init();
@@ -85,6 +85,7 @@ public:
 private:
     int rank;
     int process_count;
+    int buffer_size;
     GridPoint **interp;
     double radius_sqr;
 
@@ -101,7 +102,7 @@ private:
     int outputFile(char *outputName, int outputFormat, unsigned int outputType, double *adfGeoTransform, const char* wkt);
     void flushMpiBuffers (MPI_File *arcFiles, MPI_File *gridFiles, int numTypes, int max_buffer_size);
 
-    int reader_count_param;
+    //int reader_count_param;
 
 
     int comm_x;

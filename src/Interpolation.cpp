@@ -71,10 +71,12 @@ POSSIBILITY OF SUCH DAMAGE.
 
 Interpolation::Interpolation(double x_dist, double y_dist, double radius,
                              int _window_size, int _interpolation_mode = INTERP_AUTO,
-                             int _rank = 0, int _process_count = 1) : GRID_DIST_X (x_dist), GRID_DIST_Y(y_dist)
+                             int _rank = 0, int _process_count = 1, int _reader_count = 1, int _buffer_size = 10000) : GRID_DIST_X (x_dist), GRID_DIST_Y(y_dist)
 {
     rank = _rank;
     process_count = _process_count;
+    reader_count = _reader_count;
+    buffer_size = _buffer_size;
     data_count = 0;
     radius_sqr = radius * radius;
     window_size = _window_size;
@@ -212,7 +214,7 @@ int Interpolation::init(char *inputName, int inputFormat)
     } else if (interpolation_mode == INTERP_MPI){
         cerr << "Using mpi interp code" << endl;
 
-        interp = new MpiInterp(GRID_DIST_X, GRID_DIST_Y, GRID_SIZE_X, GRID_SIZE_Y, radius_sqr, min_x, max_x, min_y, max_y, window_size, rank, process_count);
+        interp = new MpiInterp(GRID_DIST_X, GRID_DIST_Y, GRID_SIZE_X, GRID_SIZE_Y, radius_sqr, min_x, max_x, min_y, max_y, window_size, rank, process_count, reader_count, buffer_size);
 
         cerr << "Interpolation uses mpi algorithm" << endl;
     } else {

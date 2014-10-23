@@ -70,15 +70,16 @@ MpiInterp::MpiInterp(double dist_x, double dist_y,
                            double _min_x, double _max_x,
                            double _min_y, double _max_y,
                            int _window_size,
-                           int _rank, int _process_count)
+                           int _rank, int _process_count, int _reader_count, int _buffer_size)
 {
     rank = _rank;
     process_count = _process_count;
+    reader_count = _reader_count;
+    buffer_size = _buffer_size;
+    //comm_done = 0;
 
-    comm_done = 0;
+    //reader_count_param = 1;
 
-    reader_count_param = 10;
-    mpi_buffer_size = 10000;
     is_reader = 0;
     is_writer = 0;
     readers = (int *) malloc(sizeof(int)*process_count);
@@ -110,19 +111,19 @@ MpiInterp::~MpiInterp()
 int MpiInterp::init()
 {
     int i, j;
-    reader_count = writer_count = 0;
+    writer_count = 0;
     w_row_start_index = w_row_end_index = 0;
-    row_stride = GRID_SIZE_Y/(process_count-reader_count_param) + 1;
+    row_stride = GRID_SIZE_Y/(process_count-reader_count) + 1;
 
-    if(rank<reader_count_param)
+    if(rank<reader_count)
     {
         is_reader = 1;
     }
 
-    if(rank >= reader_count_param) //
+    if(rank >= reader_count) //
     {
-        w_row_start_index = (rank - reader_count_param) * row_stride;
-        w_row_end_index =   ((rank + 1) - reader_count_param) * row_stride -1;
+        w_row_start_index = (rank - reader_count) * row_stride;
+        w_row_end_index =   ((rank + 1) - reader_count) * row_stride -1;
         if(w_row_start_index < GRID_SIZE_Y-1 && w_row_end_index <= GRID_SIZE_Y-1){
             is_writer = 1;
         }
@@ -182,10 +183,8 @@ int MpiInterp::init()
     MPI_Allgather(&is_writer, 1, MPI_INT, writers, 1, MPI_INT, MPI_COMM_WORLD);
     for(i=0; i<process_count; i++)
     {
-        if(readers[i])
-        {
-            reader_count++;
-        }
+        // writer count can be less than process_count - reader_count due to the way rows are partitioned to writers
+        // that is, there can be processes with rank >=  reader_count + writer_count that have nothing to do
         if(writers[i])
         {
             writer_count++;
@@ -799,7 +798,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 MPI_File_set_size (arcFiles[i], 0);
                 arc_file_mpi_offset[i] = 0;
                 arc_file_mpi_buffer[i] = (char *) malloc (
-                        sizeof(char) * mpi_buffer_size);
+                        sizeof(char) * buffer_size);
                 arc_file_mpi_sizes[i] = (unsigned int *) malloc (
                         sizeof(unsigned int) * process_count);
                 arc_file_mpi_count[i] = 0;
@@ -848,7 +847,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 MPI_File_set_size (gridFiles[i], 0);
                 grid_file_mpi_offset[i] = 0;
                 grid_file_mpi_buffer[i] = (char *) malloc (
-                        sizeof(char) * mpi_buffer_size);
+                        sizeof(char) * buffer_size);
                 grid_file_mpi_sizes[i] = (unsigned int *) malloc (
                         sizeof(unsigned int) * process_count);
                 grid_file_mpi_count[i] = 0;
@@ -1540,7 +1539,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
 
                     }
                 }
-                flushMpiBuffers (arcFiles, gridFiles, numTypes, mpi_buffer_size - 1024);
+                flushMpiBuffers (arcFiles, gridFiles, numTypes, buffer_size - 1024);
             }
         }
 
