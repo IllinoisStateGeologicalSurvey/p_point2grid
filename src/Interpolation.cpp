@@ -186,8 +186,8 @@ int Interpolation::init(char *inputName, int inputFormat)
     GRID_SIZE_X = (int)(ceil((max_x - min_x)/GRID_DIST_X)) + 1;
     GRID_SIZE_Y = (int)(ceil((max_y - min_y)/GRID_DIST_Y)) + 1;
 
-    cerr << "GRID_SIZE_X " << GRID_SIZE_X << endl;
-    cerr << "GRID_SIZE_Y " << GRID_SIZE_Y << endl;
+    //cerr << "GRID_SIZE_X " << GRID_SIZE_X << endl;
+    //cerr << "GRID_SIZE_Y " << GRID_SIZE_Y << endl;
 
     if (interpolation_mode == INTERP_AUTO) {
         // if the size is too big to fit in memory,
@@ -212,11 +212,11 @@ int Interpolation::init(char *inputName, int inputFormat)
         cerr << "Interpolation uses out-of-core algorithm" << endl;
 
     } else if (interpolation_mode == INTERP_MPI){
-        cerr << "Using mpi interp code" << endl;
+        //cerr << "Using mpi interp code" << endl;
 
         interp = new MpiInterp(GRID_DIST_X, GRID_DIST_Y, GRID_SIZE_X, GRID_SIZE_Y, radius_sqr, min_x, max_x, min_y, max_y, window_size, rank, process_count, reader_count, buffer_size);
 
-        cerr << "Interpolation uses mpi algorithm" << endl;
+       // cerr << "Interpolation uses mpi algorithm" << endl;
     } else {
         cerr << "Using incore interp code" << endl;
 
@@ -249,7 +249,7 @@ int Interpolation::interpolation(char *inputName,
     //struct tms tbuf;
     //clock_t t0, t1;
 
-    printf("Interpolation Starts, rank %i\n", rank);
+    //printf("Interpolation Starts, rank %i\n", rank);
 
     //t0 = times(&tbuf);
 
@@ -358,14 +358,16 @@ int Interpolation::interpolation(char *inputName,
         
 
     }
-
+    MPI_Barrier(MPI_COMM_WORLD);
+    printf("finish begin, rank %i\n", rank);
     if((rc = interp->finish(outputName, outputFormat, outputType)) < 0)
     {
         cerr << "interp->finish() error" << endl;
         return -1;
     }
+    printf("finish end, rank %i\n", rank);
 
-    cerr << "Interpolation::interpolation() done successfully, rank " << rank << endl;
+    //cerr << "Interpolation::interpolation() done successfully, rank " << rank << endl;
 
     return 0;
 }

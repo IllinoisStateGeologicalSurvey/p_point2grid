@@ -100,7 +100,7 @@ MpiInterp::MpiInterp(double dist_x, double dist_y,
 
     window_size = _window_size;
 
-    cerr << "MpiInterp created successfully" << endl;
+    //cerr << "MpiInterp created successfully" << endl;
 }
 
 MpiInterp::~MpiInterp()
@@ -198,9 +198,10 @@ int MpiInterp::init()
     //    if(readers[i]) printf("reader, rank %i %i\n", i, rank);
     //    if(writers[i]) printf("writer, rank %i %i\n", i, rank);
     //}
-
-    printf("init done, w_row_start_index %i,  w_row_end_index %i, row_stride %i, GRID_SIZE_Y %i, GRID_SIZE_X %i, rank %i\n", w_row_start_index,w_row_end_index,row_stride,GRID_SIZE_Y,GRID_SIZE_X,rank );
-
+    if(DEBUG)
+    {
+    printf("MPIInterp.init() done, w_row_start_index %i,  w_row_end_index %i, row_stride %i, GRID_SIZE_Y %i, GRID_SIZE_X %i, rank %i\n", w_row_start_index,w_row_end_index,row_stride,GRID_SIZE_Y,GRID_SIZE_X,rank );
+    }
     MPI_Barrier(MPI_COMM_WORLD);
     return 0;
 
@@ -253,7 +254,7 @@ int MpiInterp::finish(char *outputName, int outputFormat, unsigned int outputTyp
     int rc;
     int i,j;
     MPI_Barrier(MPI_COMM_WORLD);
-    printf("finish starts, rank %i\n", rank);
+    //printf("finish starts, rank %i\n", rank);
 
 
     //struct tms tbuf;
@@ -390,7 +391,7 @@ int MpiInterp::finish(char *outputName, int outputFormat, unsigned int outputTyp
     } //if(is_writer)
     t0 = clock ();
     MPI_Barrier (MPI_COMM_WORLD);
-    printf ("finish ends, rank %i\n", rank);
+    //printf ("finish ends, rank %i\n", rank);
     MPI_Barrier (MPI_COMM_WORLD);
 
 
@@ -402,7 +403,7 @@ int MpiInterp::finish(char *outputName, int outputFormat, unsigned int outputTyp
 
     t1 = clock();
 
-    cerr << "Output Execution time: " << (double)(t1 - t0)/ CLOCKS_PER_SEC << std::endl;
+    //cerr << "Output Execution time: " << (double)(t1 - t0)/ CLOCKS_PER_SEC << std::endl;
 
     return 0;
 }
@@ -624,9 +625,13 @@ void MpiInterp::updateGridPointRecv()
 void MpiInterp::updateGridPoint(int x, int y, double data_z, double distance)
 {
 
-    //static int count = -1;
-    //if (count ==-1)count =1;
-    //else count++;
+    static int count = 0;
+
+    count++;
+
+    if(!(count%1000)){
+        printf("updateGridPoint, rank %i called %i times\n", rank, count);
+    }
 
     //printf("update starts, rank %i, count %i\n", rank, count);
     //printf ("updateGridPoint rank %i, x %i, y %i, count %i\n", rank, x, y, count);
@@ -1259,9 +1264,9 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     }
                     MPI_File_seek (arcFiles[i], arc_file_mpi_offset[i],
                     MPI_SEEK_SET);
-                    printf ("arc_file_mpi_sizes[i] %i %u, %lli, rank %i\n", i,
-                            arc_file_mpi_sizes[i][rank], arc_file_mpi_offset[i],
-                            rank);
+                    //printf ("arc_file_mpi_sizes[i] %i %u, %lli, rank %i\n", i,
+                    //        arc_file_mpi_sizes[i][rank], arc_file_mpi_offset[i],
+                    //        rank);
                 }
             }
         }
@@ -1279,9 +1284,9 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     }
                     MPI_File_seek (gridFiles[i], grid_file_mpi_offset[i],
                     MPI_SEEK_SET);
-                    printf ("grid_file_mpi_sizes[i] %i %u, %lli,  rank %i\n", i,
-                            grid_file_mpi_sizes[i][rank],
-                            grid_file_mpi_offset[i], rank);
+                    //printf ("grid_file_mpi_sizes[i] %i %u, %lli,  rank %i\n", i,
+                    //        grid_file_mpi_sizes[i][rank],
+                    //        grid_file_mpi_offset[i], rank);
                 }
             }
         }

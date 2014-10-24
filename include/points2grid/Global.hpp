@@ -69,3 +69,5 @@ enum INTERPOLATION_TYPE {
     INTERP_MPI = 3
 };
 
+static int DEBUG=1;
+
