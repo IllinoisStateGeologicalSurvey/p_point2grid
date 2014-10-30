@@ -100,6 +100,20 @@ MpiInterp::MpiInterp(double dist_x, double dist_y,
 
     window_size = _window_size;
 
+    const int nitems=5;
+    int          blocklengths[5] = {1,1,1,1,1};
+    MPI_Datatype types[5] = {MPI_INT, MPI_INT, MPI_INT, MPI_DOUBLE, MPI_DOUBLE};
+    MPI_Aint     offsets[5];
+
+    offsets[0] = offsetof(grid_point_info, comm);
+    offsets[1] = offsetof(grid_point_info, x);
+    offsets[2] = offsetof(grid_point_info, y);
+    offsets[3] = offsetof(grid_point_info, data_z);
+    offsets[4] = offsetof(grid_point_info, distance);
+
+    MPI_Type_create_struct(nitems, blocklengths, offsets, types, &mpi_grid_point_info);
+    MPI_Type_commit(&mpi_grid_point_info);
+
     //cerr << "MpiInterp created successfully" << endl;
 }
 
@@ -568,19 +582,28 @@ void MpiInterp::updateGridPointSend(int target_rank, int x, int y, double data_z
     comm_y = y;
     comm_data_z = data_z;
     comm_distance = distance;
+    grid_point_info info;
+
+    info.comm = read_done[rank];
+    info.x = x;
+    info.y = y;
+    info.data_z = data_z;
+    info.distance = distance;
 
     //printf("-----------------------------rank %i, target_rank %i\n", rank, target_rank);
     //printf ("before comm_done %i, rank %i\n", comm_done, rank);
-    MPI_Send(&(read_done[rank]), 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
+    //MPI_Send(&(read_done[rank]), 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
     //printf ("comm_done %i, rank %i\n", comm_done, rank);
-    if (!read_done[rank])
-    {
-        MPI_Send (&comm_x, 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
-        MPI_Send (&comm_y, 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
-        MPI_Send (&comm_data_z, 1, MPI_DOUBLE, target_rank, 1, MPI_COMM_WORLD);
-        MPI_Send (&comm_distance, 1, MPI_DOUBLE, target_rank, 1,
-                  MPI_COMM_WORLD);
-    }
+    //if (!read_done[rank])
+    //{
+      //  MPI_Send (&comm_x, 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
+      //  MPI_Send (&comm_y, 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
+      //  MPI_Send (&comm_data_z, 1, MPI_DOUBLE, target_rank, 1, MPI_COMM_WORLD);
+      //  MPI_Send (&comm_distance, 1, MPI_DOUBLE, target_rank, 1,
+      //            MPI_COMM_WORLD);
+    //}
+
+    MPI_Send(&info, 1, mpi_grid_point_info, target_rank, 1, MPI_COMM_WORLD);
 
 }
 
@@ -590,20 +613,34 @@ void MpiInterp::updateGridPointRecv()
     MPI_Status status;
     int comm_done;
     int i;
+    grid_point_info info;
 
     while(true){
-        MPI_Recv(&comm_done, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, &status);
-        if(comm_done)
+        //MPI_Recv(&comm_done, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, &status);
+        //if(comm_done)
+        //{
+        //    read_done[status.MPI_SOURCE] = 1;
+        //}
+        //else
+        //{
+           // MPI_Recv(&comm_x, 1, MPI_INT, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
+          //  MPI_Recv(&comm_y, 1, MPI_INT, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
+          //  MPI_Recv(&comm_data_z, 1, MPI_DOUBLE, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
+          //  MPI_Recv(&comm_distance, 1, MPI_DOUBLE, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
+        //    updateGridPoint(comm_x, comm_y, comm_data_z, comm_distance);
+        //}
+        MPI_Recv(&info, 1, mpi_grid_point_info, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, &status);
+
+
+
+        if(info.comm)
         {
             read_done[status.MPI_SOURCE] = 1;
         }
         else
         {
-            MPI_Recv(&comm_x, 1, MPI_INT, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
-            MPI_Recv(&comm_y, 1, MPI_INT, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
-            MPI_Recv(&comm_data_z, 1, MPI_DOUBLE, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
-            MPI_Recv(&comm_distance, 1, MPI_DOUBLE, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
-            updateGridPoint(comm_x, comm_y, comm_data_z, comm_distance);
+            //updateGridPoint(comm_x, comm_y, comm_data_z, comm_distance);
+            updateGridPoint(info.x, info.y, info.data_z, info.distance);
         }
         // determine if all the readers are done sending points
         comm_done = 1;

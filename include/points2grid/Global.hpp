@@ -71,3 +71,12 @@ enum INTERPOLATION_TYPE {
 
 static int DEBUG=1;
 
+typedef struct _grid_point_info {
+        int comm;
+        int x;
+        int y;
+        double data_z;
+        double distance;
+} grid_point_info;
+
+

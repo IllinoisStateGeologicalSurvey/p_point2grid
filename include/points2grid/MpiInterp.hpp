@@ -86,8 +86,10 @@ private:
     int rank;
     int process_count;
     int buffer_size;
+    MPI_Datatype mpi_grid_point_info;
     GridPoint **interp;
     double radius_sqr;
+
 
 private:
     void update_first_quadrant(double data_z, int base_x, int base_y, double x, double y);
