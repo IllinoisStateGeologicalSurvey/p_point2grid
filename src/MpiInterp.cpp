@@ -85,6 +85,7 @@ MpiInterp::MpiInterp(double dist_x, double dist_y,
     readers = (int *) malloc(sizeof(int)*process_count);
     writers = (int *) malloc(sizeof(int)*process_count);
     read_done = (int *) malloc(sizeof(int)*process_count);
+
     GRID_DIST_X = dist_x;
     GRID_DIST_Y = dist_y;
 
@@ -132,6 +133,7 @@ int MpiInterp::init()
     if(rank<reader_count)
     {
         is_reader = 1;
+
     }
 
     if(rank >= reader_count) //
@@ -205,6 +207,21 @@ int MpiInterp::init()
         }
         // readers will set read_done[rank] = 1 when they are finished readin
         read_done[i] = 0;
+    }
+    if(is_reader)
+    {
+        point_buffers = (grid_point_info **) malloc (writer_count * sizeof(grid_point_info *));
+        point_buffer_counts = (int *) malloc(writer_count * sizeof(int *));
+        for(i=0;i<writer_count;i++)
+        {
+            point_buffers[i] = (grid_point_info *)malloc(buffer_size * sizeof(grid_point_info));
+            point_buffer_counts[i] = 0;
+        }
+    }
+    if(is_writer)
+    {
+        point_buffer = (grid_point_info *)malloc(buffer_size * sizeof(grid_point_info));
+        point_buffer_count = 0;
     }
 
 
@@ -578,17 +595,20 @@ int MpiInterp::get_target_rank(int row_index){
 void MpiInterp::updateGridPointSend(int target_rank, int x, int y, double data_z, double distance)
 {
 
-    comm_x = x;
-    comm_y = y;
-    comm_data_z = data_z;
-    comm_distance = distance;
+    //comm_x = x;
+    //comm_y = y;
+    //comm_data_z = data_z;
+    //comm_distance = distance;
+    int i = target_rank - reader_count;
     grid_point_info info;
-
     info.comm = read_done[rank];
     info.x = x;
     info.y = y;
     info.data_z = data_z;
     info.distance = distance;
+
+    point_buffers[i][point_buffer_counts[i]] = info;
+    point_buffer_counts[i]++;
 
     //printf("-----------------------------rank %i, target_rank %i\n", rank, target_rank);
     //printf ("before comm_done %i, rank %i\n", comm_done, rank);
@@ -603,7 +623,15 @@ void MpiInterp::updateGridPointSend(int target_rank, int x, int y, double data_z
       //            MPI_COMM_WORLD);
     //}
 
-    MPI_Send(&info, 1, mpi_grid_point_info, target_rank, 1, MPI_COMM_WORLD);
+    if(info.comm || (!info.comm && point_buffer_counts[i]==buffer_size))
+    {
+        MPI_Send(&point_buffer_counts[i], 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
+        MPI_Send(point_buffers[i], point_buffer_counts[i], mpi_grid_point_info, target_rank, 1, MPI_COMM_WORLD);
+        point_buffer_counts[i] = 0;
+    }
+
+
+    //MPI_Send(&info, 1, mpi_grid_point_info, target_rank, 1, MPI_COMM_WORLD);
 
 }
 
@@ -629,19 +657,23 @@ void MpiInterp::updateGridPointRecv()
           //  MPI_Recv(&comm_distance, 1, MPI_DOUBLE, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
         //    updateGridPoint(comm_x, comm_y, comm_data_z, comm_distance);
         //}
-        MPI_Recv(&info, 1, mpi_grid_point_info, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, &status);
+        MPI_Recv(&point_buffer_count, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, &status);
+        MPI_Recv(point_buffer, point_buffer_count, mpi_grid_point_info, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
 
-
-
-        if(info.comm)
+        for(i=0; i<point_buffer_count; i++)
         {
-            read_done[status.MPI_SOURCE] = 1;
+            if(point_buffer[i].comm)
+            {
+                read_done[status.MPI_SOURCE] = 1;
+            }
+            else
+            {
+                //updateGridPoint(comm_x, comm_y, comm_data_z, comm_distance);
+                updateGridPoint(point_buffer[i].x, point_buffer[i].y, point_buffer[i].data_z, point_buffer[i].distance);
+            }
         }
-        else
-        {
-            //updateGridPoint(comm_x, comm_y, comm_data_z, comm_distance);
-            updateGridPoint(info.x, info.y, info.data_z, info.distance);
-        }
+
+
         // determine if all the readers are done sending points
         comm_done = 1;
         for(i=0; i<reader_count;i++)
@@ -664,11 +696,11 @@ void MpiInterp::updateGridPoint(int x, int y, double data_z, double distance)
 
     static int count = 0;
 
-    count++;
+    //count++;
 
-    if(!(count%1000)){
-        printf("updateGridPoint, rank %i called %i times\n", rank, count);
-    }
+    //if(!(count%100000)){
+    //    printf("updateGridPoint, rank %i called %i times\n", rank, count);
+    //}
 
     //printf("update starts, rank %i, count %i\n", rank, count);
     //printf ("updateGridPoint rank %i, x %i, y %i, count %i\n", rank, x, y, count);

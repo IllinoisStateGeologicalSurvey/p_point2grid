@@ -50,6 +50,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <points2grid/GridPoint.hpp>
 #include <points2grid/CoreInterp.hpp>
 #include <points2grid/GridFile.hpp>
+#include <points2grid/Global.hpp>
+
 
 #include <mpi.h>
 
@@ -123,6 +125,16 @@ private:
     int *writers; //  array process_count long that holds 0 or 1 flags indicating whether a process is a writer, rank order
     int *read_done; //array process_count long that holds 0 or 1 flags indicating whether a process is done reading points,
                     // used by readers to indicate they are done sending points to writers
+
+    // each write process uses these to recv points from a reader
+    grid_point_info *point_buffer;
+    int point_buffer_count;
+    // each read porocess uses these to send points to a specific writer
+    grid_point_info **point_buffers;
+    int *point_buffer_counts;
+
+
+
     // writing
     int mpi_buffer_size;
 

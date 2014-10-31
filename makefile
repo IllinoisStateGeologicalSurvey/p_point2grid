@@ -2,8 +2,8 @@
 IDIR =./include
 CC=mpic++
 #CFLAGS=-I$(IDIR) -I/usr/include/gdal 
-#CFLAGS=-I$(IDIR) -g -fpermissive
-CFLAGS=-I$(IDIR) -O3 -fpermissive
+CFLAGS=-I$(IDIR) -g -fpermissive
+#CFLAGS=-I$(IDIR) -O3 -fpermissive
 ADIR=./apps
 SDIR=./src
 
