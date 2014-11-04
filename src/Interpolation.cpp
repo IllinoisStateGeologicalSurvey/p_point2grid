@@ -248,9 +248,10 @@ int Interpolation::interpolation(char *inputName,
 
     //struct tms tbuf;
     //clock_t t0, t1;
-
-    //printf("Interpolation Starts, rank %i\n", rank);
-
+    if(rank == 0)
+    {
+        printf("Interpolation Starts, rank %i\n", rank);
+    }
     //t0 = times(&tbuf);
 
     //cerr << "data_count: " << data_count << endl;
@@ -299,66 +300,91 @@ int Interpolation::interpolation(char *inputName,
 
     else
     { // input format is LAS
-
-        
-        if (interp->getIsReader())
+        if (interpolation_mode == INTERP_MPI)
         {
-            las_file las;
-            las.open (inputName);
-
-            size_t count = las.points_count ();
-            size_t index (0);
-            size_t stride = count/interp->getReaderCount();
-            size_t left_over_count = count%interp->getReaderCount();
-            index = rank * stride;
-            count = (rank+1) *stride;
-            if(rank == interp->getReaderCount()-1)
+            if (interp->getIsReader ())
             {
-               count += left_over_count;
+                las_file las;
+                las.open (inputName);
+
+                size_t count = las.points_count ();
+                size_t index (0);
+                size_t stride = count / interp->getReaderCount ();
+                size_t left_over_count = count % interp->getReaderCount ();
+                index = rank * stride;
+                count = (rank + 1) * stride;
+                if (rank == interp->getReaderCount () - 1)
+                {
+                    count += left_over_count;
+                }
+
+                while (index < count)
+                {
+                    data_x = las.getX (index);
+                    data_y = las.getY (index);
+                    data_z = las.getZ (index);
+
+                    data_x -= min_x;
+                    data_y -= min_y;
+                    //
+                    //cerr << "calling update rank "<< rank << endl;
+                    if ((rc = interp->update (data_x, data_y, data_z)) < 0)
+                    {
+                        cerr << "interp->update() error while processing "
+                                << endl;
+                        return -1;
+                    }
+                    index++;
+                }
+                interp->getReadDone ()[rank] = 1;
+
+                //interp->comm_done = 1;
+                //if (process_count > 1)
+                //{
+                // tell all writers that this reader is finished sending points
+                int i;
+                for (i = 0; i < process_count; i++)
+                {
+                    if (interp->getWriters ()[i])
+                    {
+                        interp->updateGridPointSend (i, 1, 1, 1, 1);
+                    }
+                }
             }
-
-
-            while (index < count)
+            else if (interp->getIsWriter ())            // rank is a writer
             {
-                data_x = las.getX (index);
-                data_y = las.getY (index);
-                data_z = las.getZ (index);
+                interp->updateGridPointRecv ();
+            }
+            MPI_Barrier (MPI_COMM_WORLD);
+        }
+        else // interpolation_mode is other than INTERP_MPI
+        {
+
+            las_file las;
+            las.open(inputName);
+
+
+            size_t count = las.points_count();
+            size_t index(0);
+            while (index < count) {
+                data_x = las.getX(index);
+                data_y = las.getY(index);
+                data_z = las.getZ(index);
 
                 data_x -= min_x;
                 data_y -= min_y;
-                //
-                //cerr << "calling update rank "<< rank << endl;
-                if ((rc = interp->update (data_x, data_y, data_z)) < 0)
-                {
+
+                if ((rc = interp->update(data_x, data_y, data_z)) < 0) {
                     cerr << "interp->update() error while processing " << endl;
                     return -1;
                 }
                 index++;
             }
-            interp->getReadDone()[rank] = 1;
 
-            //interp->comm_done = 1;
-            //if (process_count > 1)
-            //{
-            // tell all writers that this reader is finished sending points
-            int i;
-            for (i = 0; i<process_count; i++)
-            {
-                if(interp->getWriters()[i])
-                {
-                    interp->updateGridPointSend (i, 1, 1, 1, 1);
-                }
-            }
-            //}
-        }
-        else if (interp->getIsWriter())// rank is a writer
-        {
-            interp->updateGridPointRecv();
-        }
-        
 
+        }
     }
-    MPI_Barrier(MPI_COMM_WORLD);
+
     printf("finish begin, rank %i\n", rank);
     if((rc = interp->finish(outputName, outputFormat, outputType)) < 0)
     {

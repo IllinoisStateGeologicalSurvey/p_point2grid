@@ -45,4 +45,4 @@ $(ODIR)/%.o: $(SDIR)/%.cpp
 
 clean:
 	rm -f $(ODIR)/*.o ./.depend pp2g core points2grid
-	
+

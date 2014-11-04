@@ -79,7 +79,7 @@ public:
     // for debug
     void printArray();
 
-    // depricated
+    // deprecated
     void setRadius(double r);
 
 public:
@@ -93,10 +93,6 @@ public:
     // as a rule of thumb, memory requirement = MEM_LIMIT*55 bytes
     static const unsigned int MEM_LIMIT = 200000000;
 
-    int process_count;
-    int rank;
-    int reader_count;
-    int buffer_size;
 
 private:
     double min_x;
@@ -111,6 +107,13 @@ private:
     double radius_sqr;
     int window_size;
     int interpolation_mode;
+
+    // mpi variables
+    int process_count;
+    int rank;
+    int reader_count;
+    int buffer_size;
+    // end, mpi variables
 
     CoreInterp *interp;
 };

@@ -77,13 +77,13 @@ const std::string appName("points2grid");
 
 int main(int argc, char **argv)
 {
-
+    // mpi variables
     int rank = 0;
     int process_count = 1;
     int reader_count = 1;
     int buffer_size = 10000;
     int is_mpi = 0;
-
+    // end, mpi variables
     clock_t t0, t1;
 
     // parameters
@@ -92,7 +92,7 @@ int main(int argc, char **argv)
     char outputName[1024] = {0};
 
     int input_format = INPUT_LAS;
-    int interpolation_mode = INTERP_INCORE;
+    int interpolation_mode = INTERP_AUTO;
     int output_format = 0;
     unsigned int type = 0x00000000;
     double GRID_DIST_X = 6.0;
@@ -118,12 +118,11 @@ int main(int argc, char **argv)
      "the default value is --all")
     ("input_format", po::value<std::string>(), "'ascii' expects input point cloud in ASCII format\n"
      "'las' expects input point cloud in LAS format (default)")
-    ("interpolation_mode", po::value<std::string>()->default_value("auto"), "'incore' stores working data in memory\n"
-     "'outcore' stores working data on the filesystem\n"
+    ("interpolation_mode,m", po::value<std::string>()->default_value("auto"), "'incore' stores working data in memory\n"
+     "'outcore' stores working data on the filesystem, 'parallel' uses number of processes specified by mpirun -n\n"
      "'auto' (default) guesses based on the size of the data file")
-     ("parallel,p", po::value<int>(), "run with MPI Interp, argument is number of reader processes, default is 1")
-     ("buffer_size,b", po::value<int>(), "size of each MPI writer processes write buffer in bytes, default is 10000 bytes");
-
+     ("reader_count,r", po::value<int>(), "when interpolation mode is 'parallel', value is number of reader processes, default is 1")
+     ("buffer_size,b", po::value<int>(), "when interpolation mode is 'parallel', value is write buffer in bytes, default is 10000 bytes");
 
     df.add_options()
 #ifdef CURL_FOUND
@@ -314,6 +313,9 @@ int main(int argc, char **argv)
             else if (im.compare("outcore") == 0) {
                 interpolation_mode = INTERP_OUTCORE;
             }
+            else if (im.compare("parallel") == 0) {
+                 interpolation_mode = INTERP_MPI;
+            }
             else {
                 throw std::logic_error("'" + im + "' is not a recognized interpolation_mode");
             }
@@ -322,9 +324,8 @@ int main(int argc, char **argv)
         if(type == 0)
             type = OUTPUT_TYPE_ALL;
 
-        if(vm.count("parallel")) {
-            reader_count = vm["parallel"].as<int>();
-            is_mpi =1;
+        if(vm.count("reader_count")) {
+            reader_count = vm["reader_count"].as<int>();
         }
         if(vm.count("buffer_size")) {
             buffer_size = vm["buffer_size"].as<int>();
@@ -374,9 +375,8 @@ int main(int argc, char **argv)
         }
 #endif
 
-        if (is_mpi)
+        if (interpolation_mode == INTERP_MPI)
         {
-            interpolation_mode = INTERP_MPI;
             MPI_Init (&argc, &argv);
             MPI_Comm_size (MPI_COMM_WORLD, &process_count);
             MPI_Comm_rank (MPI_COMM_WORLD, &rank);
@@ -395,7 +395,10 @@ int main(int argc, char **argv)
 
             printf ("MPI task %d has started...\n", rank);
         }
-        MPI_Barrier(MPI_COMM_WORLD);
+        if(interpolation_mode == INTERP_MPI)
+        {
+            MPI_Barrier(MPI_COMM_WORLD);
+        }
         if (rank == 0)
         {
             cout << "Parameters ************************" << endl;
@@ -414,7 +417,11 @@ int main(int argc, char **argv)
                     << endl;
             cout << "************************************" << endl;
         }
-        MPI_Barrier(MPI_COMM_WORLD);
+        if (interpolation_mode == INTERP_MPI)
+        {
+            MPI_Barrier (MPI_COMM_WORLD);
+        }
+
     }
     catch (std::exception& e) {
         cerr << "error: " << e.what() << endl;
@@ -434,8 +441,10 @@ int main(int argc, char **argv)
     }
 
     t1 = clock();
-    //printf("Init + Min/Max time: %10.2f\n", (double)(t1 - t0)/CLOCKS_PER_SEC);
-
+    if(rank == 0)
+    {
+        printf("Init + Min/Max time: %10.2f\n", (double)(t1 - t0)/CLOCKS_PER_SEC);
+    }
     t0 = clock();
     if(ip->interpolation(inputName, outputName, input_format, output_format, type) < 0)
     {
@@ -444,12 +453,21 @@ int main(int argc, char **argv)
     }
 
     t1 = clock();
-    //printf("DEM generation + Output time: %10.2f\n", (double)(t1 - t0)/CLOCKS_PER_SEC);
-
-    //printf("# of data: %d\n", ip->getDataCount());
-    //printf("dimension: %d x %d\n", ip->getGridSizeX(), ip->getGridSizeY());
-
-    MPI_Finalize();
-    //delete ip;
+    if (rank == 0)
+    {
+        printf ("DEM generation + Output time: %10.2f\n",
+                (double) (t1 - t0) / CLOCKS_PER_SEC);
+        printf ("# of data: %d\n", ip->getDataCount ());
+        printf ("dimension: %d x %d\n", ip->getGridSizeX (),
+                ip->getGridSizeY ());
+    }
+    if (interpolation_mode == INTERP_MPI)
+    {
+        MPI_Finalize ();
+    }
+    else
+    {
+        delete ip;
+    }
     return 0;
 }
