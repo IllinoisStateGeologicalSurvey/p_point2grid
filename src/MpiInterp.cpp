@@ -1273,11 +1273,11 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 {
                     for (k = 0; k < numTypes; k++)
                     {
-                        if (arcFiles[k] != 0)
+                        if (arcFiles != NULL && arcFiles[k] != NULL)
                         {
                             arc_file_mpi_size[k] += sprintf(buf, "\n");
                         }
-                        if (gridFiles[k] != 0)
+                        if (gridFiles != NULL && gridFiles[k] != NULL)
                         {
                             grid_file_mpi_size[k] += sprintf(buf, "\n");
                         }
@@ -1597,13 +1597,13 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     for (k = 0; k < numTypes; k++)
                     {
 
-                        if (arcFiles[k] != 0)
+                        if (arcFiles != NULL && arcFiles[k] != NULL)
                         {
                             arc_file_mpi_count[k] += sprintf (
                                     arc_file_mpi_buffer[k] + arc_file_mpi_count[k],
                                     "\n");
                         }
-                        if (gridFiles[k] != 0)
+                        if (gridFiles != NULL && gridFiles[k] != NULL)
                         {
                             grid_file_mpi_count[k] += sprintf (
                                     grid_file_mpi_buffer[k]

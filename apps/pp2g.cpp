@@ -121,8 +121,8 @@ int main(int argc, char **argv)
     ("interpolation_mode,m", po::value<std::string>()->default_value("auto"), "'incore' stores working data in memory\n"
      "'outcore' stores working data on the filesystem, 'parallel' uses number of processes specified by mpirun -n\n"
      "'auto' (default) guesses based on the size of the data file")
-     ("reader_count,r", po::value<int>(), "when interpolation mode is 'parallel', value is number of reader processes, default is 1")
-     ("buffer_size,b", po::value<int>(), "when interpolation mode is 'parallel', value is write buffer in bytes, default is 10000 bytes");
+     ("reader_count,c", po::value<int>(), "when interpolation mode is 'parallel', arg is number of reader processes, default is 1")
+     ("buffer_size,b", po::value<int>(), "when interpolation mode is 'parallel', arg is write buffer size in bytes, default is 10000 bytes");
 
     df.add_options()
 #ifdef CURL_FOUND
