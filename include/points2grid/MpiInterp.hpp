@@ -89,11 +89,13 @@ private:
     int process_count;
     int buffer_size;
     MPI_Datatype mpi_grid_point_info;
+    MPI_Datatype mpi_grid_point;
     GridPoint **interp;
     double radius_sqr;
 
 
 private:
+    GridPoint ** allocRows(int cnt);
     void update_first_quadrant(double data_z, int base_x, int base_y, double x, double y);
     void update_second_quadrant(double data_z, int base_x, int base_y, double x, double y);
     void update_third_quadrant(double data_z, int base_x, int base_y, double x, double y);
@@ -114,8 +116,8 @@ private:
     double comm_data_z;
     double comm_distance;
     int row_stride;  // set for all processes, this is the y grid stride between workers, last worker my have larger y total size
-    int w_row_start_index; // set only for workers
-    int w_row_end_index; // set only for workers
+    int w_row_start_index; // set only for workers aka writers
+    int w_row_end_index; // set only for workers aka writers
     int get_target_rank(int grid_index);
     int reader_count;
     int writer_count;

@@ -115,6 +115,44 @@ MpiInterp::MpiInterp(double dist_x, double dist_y,
     MPI_Type_create_struct(nitems, blocklengths, offsets, types, &mpi_grid_point_info);
     MPI_Type_commit(&mpi_grid_point_info);
 
+/*
+    typedef P2G_DLL struct
+    {
+        double Zmin;
+        double Zmax;
+        double Zmean;
+        unsigned int count;
+        double Zidw;
+        double Zstd;    // M2 from https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Online_algorithm
+        double Zstd_tmp;  // mean from above.
+        double sum;
+        int empty;
+        int filled;
+    } GridPoint;
+*/
+
+       const int nitems2=10;
+       int          blocklengths2[10] = {1,1,1,1,1,1,1,1,1,1};
+       MPI_Datatype types2[10] = {MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_UNSIGNED, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_INT, MPI_INT};
+       MPI_Aint     offsets2[10];
+
+       offsets2[0] = offsetof(GridPoint, Zmin);
+       offsets2[1] = offsetof(GridPoint, Zmax);
+       offsets2[2] = offsetof(GridPoint, Zmean);
+       offsets2[3] = offsetof(GridPoint, count);
+       offsets2[4] = offsetof(GridPoint, Zidw);
+       offsets2[5] = offsetof(GridPoint, Zstd);
+       offsets2[6] = offsetof(GridPoint, Zstd_tmp);
+       offsets2[7] = offsetof(GridPoint, sum);
+       offsets2[8] = offsetof(GridPoint, empty);
+       offsets2[9] = offsetof(GridPoint, filled);
+
+
+       MPI_Type_create_struct(nitems2, blocklengths2, offsets2, types2, &mpi_grid_point);
+       MPI_Type_commit(&mpi_grid_point);
+
+
+
     //cerr << "MpiInterp created successfully" << endl;
 }
 
@@ -280,19 +318,25 @@ int MpiInterp::finish(char *outputName, int outputFormat, unsigned int outputTyp
   return finish(outputName, outputFormat, outputType, 0, 0);
 }
 
-int MpiInterp::finish(char *outputName, int outputFormat, unsigned int outputType, double *adfGeoTransform, const char* wkt)
+int
+MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
+                   double *adfGeoTransform, const char* wkt)
 {
     int rc;
-    int i,j;
-    MPI_Barrier(MPI_COMM_WORLD);
+    int i, j;
+    MPI_Barrier (MPI_COMM_WORLD);
     //printf("finish starts, rank %i\n", rank);
-
-
+    // reader_count is the first writer rank, reader ranks are 0 through reader_count-1
+    int first_writer_rank = reader_count;
+    int last_writer_rank = first_writer_rank + writer_count - 1;
+    int row_count = w_row_end_index - w_row_start_index + 1;
+    GridPoint **rows_before = NULL;
+    GridPoint **rows_after = NULL;
+    MPI_Status status;
     //struct tms tbuf;
     clock_t t0, t1;
     if (is_writer)
     {
-        int row_count = w_row_end_index - w_row_start_index + 1;
         for (i = 0; i < row_count; i++)
         {
             for (j = 0; j < GRID_SIZE_X; j++)
@@ -345,14 +389,96 @@ int MpiInterp::finish(char *outputName, int outputFormat, unsigned int outputTyp
                 }
             }
         }
-        // Sriram's edit: Fill zeros using the window size parameter
-        // todo, fix this to work with cells that reference other cells in other writers
-        /*
+
         if (window_size != 0)
         {
             int window_dist = window_size / 2;
-            for (int i = 0; i < GRID_SIZE_X; i++)
-                for (int j = 0; j < GRID_SIZE_Y; j++)
+            // reader_count is the first writer rank, reader ranks are 0 through reader_count-1
+            int first_writer_rank = reader_count;
+            int last_writer_rank = first_writer_rank + writer_count - 1;
+
+            if (rank == first_writer_rank && rank == last_writer_rank)
+            {
+                // do nothing
+            }
+            else if (rank == first_writer_rank && rank != last_writer_rank)
+            {
+                // alloc and get window_dist rows from next rank for rows_after
+                rows_after = allocRows (window_dist);
+                // MPI send last window_dist rows to rank +1
+                //MPI recv first window_dist rows from rank + 1 into rows_after
+            }
+            else if (rank != first_writer_rank && rank != last_writer_rank)
+            {
+                // alloc and get window_dist rows from previous rank for rows_before
+                rows_before = allocRows (window_dist);
+                // alloc and get window_dist rows from next rank for rows_after
+                rows_after = allocRows (window_dist);
+            }
+            else if (rank != first_writer_rank && rank == last_writer_rank)
+            {
+                // alloc and get window_dist rows from previous rank for rows_before
+                rows_before = allocRows (window_dist);
+            }
+        }
+    }
+    MPI_Barrier (MPI_COMM_WORLD);
+
+    if (is_writer)
+    {
+        int i;
+        int window_dist = window_size / 2;
+        if (rank == first_writer_rank && rank == last_writer_rank)
+        {
+            // do nothing
+        }
+        else if (rank == first_writer_rank && rank != last_writer_rank)
+        {
+            // first writer, send last rows and recv first rows from next writer
+           for(i=window_dist; i>0; i--)
+           {
+               MPI_Send (interp[w_row_end_index-i], GRID_SIZE_X, mpi_grid_point,
+                         rank + 1, 1, MPI_COMM_WORLD);
+           }
+           for(i=0; i<window_dist; i++){
+               MPI_Recv (rows_after[i], GRID_SIZE_X, mpi_grid_point, rank + 1,
+                         1, MPI_COMM_WORLD, &status);
+           }
+
+        }
+        else if (rank != first_writer_rank && rank != last_writer_rank)
+        {
+            // alloc and get window_dist rows from previous rank for rows_before
+            // alloc and get window_dist rows from next rank for rows_after
+        }
+        else if (rank != first_writer_rank && rank == last_writer_rank)
+        {
+            // alloc and get window_dist rows from previous rank for rows_before
+
+            for(i=0; i<window_dist; i++)
+            {
+                MPI_Recv (rows_before[i], GRID_SIZE_X, mpi_grid_point,
+                          rank - 1, 1, MPI_COMM_WORLD, &status);
+            }
+            for(i=0; i<window_dist; i++)
+            {
+                MPI_Send(interp[i], GRID_SIZE_X,
+                          mpi_grid_point, rank - 1, 1, MPI_COMM_WORLD);
+            }
+
+        }
+    }
+    // Sriram's edit: Fill zeros using the window size parameter
+
+    MPI_Barrier (MPI_COMM_WORLD);
+    if (is_writer)
+    {
+        if (window_size != 0)
+        {
+            int window_dist = window_size / 2;
+            for (int i = 0; i < row_count; i++)
+            {
+                for (int j = 0; j < GRID_SIZE_X; j++)
                 {
                     if (interp[i][j].empty == 0)
                     {
@@ -362,9 +488,12 @@ int MpiInterp::finish(char *outputName, int outputFormat, unsigned int outputTyp
                             for (int q = j - window_dist; q <= j + window_dist;
                                     q++)
                             {
-                                if ((p >= 0) && (p < GRID_SIZE_X) && (q >= 0)
-                                        && (q < GRID_SIZE_Y))
+                                if ((p >= 0) && (p < row_count) && (q >= 0)
+                                        && (q < GRID_SIZE_X))
                                 {
+                                    if(p==750 || p==0){
+                                    printf("rows in %i %i %i, %f\n", p, q, rank, interp[p][q].Zmean);
+                                    }
                                     if ((p == i) && (q == j))
                                         continue;
 
@@ -403,6 +532,97 @@ int MpiInterp::finish(char *outputName, int outputFormat, unsigned int outputTyp
                                                                 Interpolation::WEIGHTER));
                                     }
                                 }
+
+
+
+                                else if ((p < 0) && (q >= 0) && (q < GRID_SIZE_X) && rows_before != NULL)
+                                {
+                                    printf("rows before %i %i %i, %f\n", p, q, rank, rows_before[0][q].Zmean);
+                                    int p2 = p + window_dist;
+                                    if (rows_before[p2][q].empty != 0)
+                                    {
+                                        printf("rows before %i %i %i\n", p, q, rank);
+                                        double distance = max (abs (p - i),
+                                                               abs (q - j));
+                                        interp[i][j].Zmean +=
+                                                rows_before[p2][q].Zmean
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                        interp[i][j].Zidw +=
+                                                rows_before[p2][q].Zidw
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                        interp[i][j].Zstd +=
+                                                rows_before[p2][q].Zstd
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                        interp[i][j].Zstd_tmp +=
+                                                rows_before[p2][q].Zstd_tmp
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                        interp[i][j].Zmin +=
+                                                rows_before[p2][q].Zmin
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                        interp[i][j].Zmax +=
+                                                rows_before[p2][q].Zmax
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+
+                                        new_sum +=
+                                                1
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                    }
+                                }
+
+
+                                else if ((p >= row_count) && (q >= 0)
+                                        && (q < GRID_SIZE_X)
+                                        && rows_after != NULL)
+                                {
+                                    printf("rows after %i %i %i, %f\n", p, q, rank, rows_after[0][q].Zmean);
+                                    int p2 = p-row_count;
+                                    if (rows_after[p2][q].empty != 0)
+                                    {
+                                        printf("rows after %i %i %i\n", p, q, rank);
+                                        double distance = max (abs (p - i),
+                                                               abs (q - j));
+                                        interp[i][j].Zmean +=
+                                                rows_after[p2][q].Zmean
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                        interp[i][j].Zidw +=
+                                                rows_after[p2][q].Zidw
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                        interp[i][j].Zstd +=
+                                                rows_after[p2][q].Zstd
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                        interp[i][j].Zstd_tmp +=
+                                                rows_after[p2][q].Zstd_tmp
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                        interp[i][j].Zmin +=
+                                                rows_after[p2][q].Zmin
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                        interp[i][j].Zmax +=
+                                                rows_after[p2][q].Zmax
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+
+                                        new_sum +=
+                                                1
+                                                        / (pow (distance,
+                                                                Interpolation::WEIGHTER));
+                                    }
+                                }
+
+
+
+
                             }
                         }
                         if (new_sum > 0)
@@ -417,22 +637,22 @@ int MpiInterp::finish(char *outputName, int outputFormat, unsigned int outputTyp
                         }
                     }
                 }
+            }
         }
-    */
-    } //if(is_writer)
+    }
     t0 = clock ();
     MPI_Barrier (MPI_COMM_WORLD);
     //printf ("finish ends, rank %i\n", rank);
     MPI_Barrier (MPI_COMM_WORLD);
 
-
-    if((rc = outputFile(outputName, outputFormat, outputType, adfGeoTransform, wkt)) < 0)
+    if ((rc = outputFile (outputName, outputFormat, outputType, adfGeoTransform,
+                          wkt)) < 0)
     {
         cerr << "MpiInterp::finish outputFile error" << endl;
         return -1;
     }
 
-    t1 = clock();
+    t1 = clock ();
 
     //cerr << "Output Execution time: " << (double)(t1 - t0)/ CLOCKS_PER_SEC << std::endl;
 
@@ -442,6 +662,35 @@ int MpiInterp::finish(char *outputName, int outputFormat, unsigned int outputTyp
 //////////////////////////////////////////////////////
 // Private Methods
 //////////////////////////////////////////////////////
+
+GridPoint **
+MpiInterp::allocRows (int cnt)
+{
+
+    //printf("alloc rows called %i, %i\n", cnt, rank);
+    GridPoint **rows;
+    rows = (GridPoint**) malloc (sizeof(GridPoint *) * cnt);
+
+    if (rows == NULL)
+    {
+        cerr << "MpiInterp::getRows() malloc error" << endl;
+        return NULL;
+    }
+    int i;
+    for (i = 0; i < cnt; i++)
+    {
+        rows[i] = (GridPoint *) malloc (sizeof(GridPoint) * GRID_SIZE_X);
+        if (rows[i] == NULL)
+        {
+            cerr << "MpiInterp::getRows() malloc error" << endl;
+            return NULL;
+        }
+    }
+    return rows;
+}
+
+
+
 
 void MpiInterp::update_first_quadrant(double data_z, int base_x, int base_y, double x, double y)
 {
