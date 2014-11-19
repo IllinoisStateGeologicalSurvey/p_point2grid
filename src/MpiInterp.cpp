@@ -115,41 +115,27 @@ MpiInterp::MpiInterp(double dist_x, double dist_y,
     MPI_Type_create_struct(nitems, blocklengths, offsets, types, &mpi_grid_point_info);
     MPI_Type_commit(&mpi_grid_point_info);
 
-/*
-    typedef P2G_DLL struct
-    {
-        double Zmin;
-        double Zmax;
-        double Zmean;
-        unsigned int count;
-        double Zidw;
-        double Zstd;    // M2 from https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Online_algorithm
-        double Zstd_tmp;  // mean from above.
-        double sum;
-        int empty;
-        int filled;
-    } GridPoint;
-*/
+    const int nitems2 = 10;
+    int blocklengths2[10] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
+    MPI_Datatype types2[10] = { MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE,
+            MPI_UNSIGNED, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE,
+            MPI_INT, MPI_INT };
+    MPI_Aint offsets2[10];
 
-       const int nitems2=10;
-       int          blocklengths2[10] = {1,1,1,1,1,1,1,1,1,1};
-       MPI_Datatype types2[10] = {MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_UNSIGNED, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_INT, MPI_INT};
-       MPI_Aint     offsets2[10];
+    offsets2[0] = offsetof(GridPoint, Zmin);
+    offsets2[1] = offsetof(GridPoint, Zmax);
+    offsets2[2] = offsetof(GridPoint, Zmean);
+    offsets2[3] = offsetof(GridPoint, count);
+    offsets2[4] = offsetof(GridPoint, Zidw);
+    offsets2[5] = offsetof(GridPoint, Zstd);
+    offsets2[6] = offsetof(GridPoint, Zstd_tmp);
+    offsets2[7] = offsetof(GridPoint, sum);
+    offsets2[8] = offsetof(GridPoint, empty);
+    offsets2[9] = offsetof(GridPoint, filled);
 
-       offsets2[0] = offsetof(GridPoint, Zmin);
-       offsets2[1] = offsetof(GridPoint, Zmax);
-       offsets2[2] = offsetof(GridPoint, Zmean);
-       offsets2[3] = offsetof(GridPoint, count);
-       offsets2[4] = offsetof(GridPoint, Zidw);
-       offsets2[5] = offsetof(GridPoint, Zstd);
-       offsets2[6] = offsetof(GridPoint, Zstd_tmp);
-       offsets2[7] = offsetof(GridPoint, sum);
-       offsets2[8] = offsetof(GridPoint, empty);
-       offsets2[9] = offsetof(GridPoint, filled);
-
-
-       MPI_Type_create_struct(nitems2, blocklengths2, offsets2, types2, &mpi_grid_point);
-       MPI_Type_commit(&mpi_grid_point);
+    MPI_Type_create_struct (nitems2, blocklengths2, offsets2, types2,
+                            &mpi_grid_point);
+    MPI_Type_commit (&mpi_grid_point);
 
 
 
@@ -167,6 +153,12 @@ int MpiInterp::init()
     writer_count = 0;
     w_row_start_index = w_row_end_index = 0;
     row_stride = GRID_SIZE_Y/(process_count-reader_count) + 1;
+    // possibly reset row_stride to ensure window filling works correctly
+    // this should be a very rare case, i.e., a small DEM with large number of processes...
+    if(window_size && row_stride<(window_size/2))
+    {
+        row_stride = window_size/2;
+    }
 
     if(rank<reader_count)
     {
@@ -174,17 +166,34 @@ int MpiInterp::init()
 
     }
 
-    if(rank >= reader_count) //
+    if(rank >= reader_count)
     {
         w_row_start_index = (rank - reader_count) * row_stride;
         w_row_end_index =   ((rank + 1) - reader_count) * row_stride -1;
-        if(w_row_start_index < GRID_SIZE_Y-1 && w_row_end_index <= GRID_SIZE_Y-1){
+        if(w_row_start_index < GRID_SIZE_Y-1 && w_row_end_index <= GRID_SIZE_Y-1)
+        {
             is_writer = 1;
+            // needed for window filling to work correctly, should be rare...
+            // makes what would normally be the next to last writer the last writer
+            if( ((GRID_SIZE_Y-1) - w_row_end_index) < (window_size/2))
+            {
+                w_row_end_index = GRID_SIZE_Y-1;
+            }
+
         }
         else if(w_row_start_index < GRID_SIZE_Y-1 && w_row_end_index > GRID_SIZE_Y-1)
         {
-            is_writer = 1;
-            w_row_end_index = GRID_SIZE_Y-1;
+            // see above window filling comment...
+            if( (w_row_end_index - (GRID_SIZE_Y-1)) < (window_size/2))
+            {
+                is_writer = w_row_start_index = w_row_start_index = 0;
+            }
+            else
+            {
+                is_writer = 1;
+                w_row_end_index = GRID_SIZE_Y-1;
+            }
+
         }
         else // left over processes that are neither readers or writers
         {
@@ -393,6 +402,7 @@ MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
         if (window_size != 0)
         {
             int window_dist = window_size / 2;
+
             // reader_count is the first writer rank, reader ranks are 0 through reader_count-1
             int first_writer_rank = reader_count;
             int last_writer_rank = first_writer_rank + writer_count - 1;
@@ -424,20 +434,20 @@ MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
     }
     MPI_Barrier (MPI_COMM_WORLD);
 
-    if (is_writer)
+    if (is_writer && window_size != 0)
     {
         int i;
         int window_dist = window_size / 2;
         if (rank == first_writer_rank && rank == last_writer_rank)
         {
-            // do nothing
+            // one writer process, do nothing
         }
         else if (rank == first_writer_rank && rank != last_writer_rank)
         {
-            // first writer, send last rows and recv first rows from next writer
-           for(i=window_dist; i>0; i--)
+           // first writer, send last rows and recv first rows from next writer
+           for(i=window_dist-1; i>=0; i--)
            {
-               MPI_Send (interp[w_row_end_index-i], GRID_SIZE_X, mpi_grid_point,
+               MPI_Send (interp[w_row_end_index-w_row_start_index-i], GRID_SIZE_X, mpi_grid_point,
                          rank + 1, 1, MPI_COMM_WORLD);
            }
            for(i=0; i<window_dist; i++){
@@ -448,13 +458,34 @@ MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
         }
         else if (rank != first_writer_rank && rank != last_writer_rank)
         {
-            // alloc and get window_dist rows from previous rank for rows_before
-            // alloc and get window_dist rows from next rank for rows_after
+            // mid writer, recv last rows of previous writer and send first rows to previous writer
+            for (i = 0; i < window_dist; i++)
+            {
+                MPI_Recv (rows_before[i], GRID_SIZE_X, mpi_grid_point, rank - 1,
+                          1, MPI_COMM_WORLD, &status);
+            }
+            for (i = 0; i < window_dist; i++)
+            {
+                MPI_Send (interp[i], GRID_SIZE_X, mpi_grid_point, rank - 1, 1,
+                          MPI_COMM_WORLD);
+            }
+            // mid writer, send last to next writer rows and recv first rows from next writer
+            for (i = window_dist - 1; i >= 0; i--)
+            {
+                MPI_Send (interp[w_row_end_index - w_row_start_index - i],
+                          GRID_SIZE_X, mpi_grid_point, rank + 1, 1,
+                          MPI_COMM_WORLD);
+            }
+            for (i = 0; i < window_dist; i++)
+            {
+                MPI_Recv (rows_after[i], GRID_SIZE_X, mpi_grid_point, rank + 1,
+                          1, MPI_COMM_WORLD, &status);
+            }
+
         }
         else if (rank != first_writer_rank && rank == last_writer_rank)
         {
-            // alloc and get window_dist rows from previous rank for rows_before
-
+            // last writer, recv last rows of previous writer and send first rows to previous writer
             for(i=0; i<window_dist; i++)
             {
                 MPI_Recv (rows_before[i], GRID_SIZE_X, mpi_grid_point,
@@ -469,7 +500,6 @@ MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
         }
     }
     // Sriram's edit: Fill zeros using the window size parameter
-
     MPI_Barrier (MPI_COMM_WORLD);
     if (is_writer)
     {
@@ -485,18 +515,17 @@ MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
                         double new_sum = 0.0;
                         for (int p = i - window_dist; p <= i + window_dist; p++)
                         {
-                            for (int q = j - window_dist; q <= j + window_dist;
-                                    q++)
+                            for (int q = j - window_dist; q <= j + window_dist; q++)
                             {
+
+                                if ((p == i) && (q == j))
+                                {
+                                    continue;
+                                }
+
                                 if ((p >= 0) && (p < row_count) && (q >= 0)
                                         && (q < GRID_SIZE_X))
                                 {
-                                    if(p==750 || p==0){
-                                    printf("rows in %i %i %i, %f\n", p, q, rank, interp[p][q].Zmean);
-                                    }
-                                    if ((p == i) && (q == j))
-                                        continue;
-
                                     if (interp[p][q].empty != 0)
                                     {
                                         double distance = max (abs (p - i),
@@ -533,15 +562,12 @@ MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
                                     }
                                 }
 
-
-
                                 else if ((p < 0) && (q >= 0) && (q < GRID_SIZE_X) && rows_before != NULL)
                                 {
-                                    printf("rows before %i %i %i, %f\n", p, q, rank, rows_before[0][q].Zmean);
                                     int p2 = p + window_dist;
                                     if (rows_before[p2][q].empty != 0)
                                     {
-                                        printf("rows before %i %i %i\n", p, q, rank);
+                                        //printf("rows before %i %i %i %i %i %i %f %i %i \n", i, j, p2, p, q, rank, rows_before[p2][q].Zmean, w_row_start_index, w_row_end_index);
                                         double distance = max (abs (p - i),
                                                                abs (q - j));
                                         interp[i][j].Zmean +=
@@ -576,16 +602,14 @@ MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
                                     }
                                 }
 
-
                                 else if ((p >= row_count) && (q >= 0)
                                         && (q < GRID_SIZE_X)
                                         && rows_after != NULL)
                                 {
-                                    printf("rows after %i %i %i, %f\n", p, q, rank, rows_after[0][q].Zmean);
                                     int p2 = p-row_count;
                                     if (rows_after[p2][q].empty != 0)
                                     {
-                                        printf("rows after %i %i %i\n", p, q, rank);
+                                        //printf("rows after %i % i %i %i %i %i %f %i %i\n", i, j, p2, p, q, rank, rows_after[p2][q].Zmean, w_row_start_index, w_row_end_index);
                                         double distance = max (abs (p - i),
                                                                abs (q - j));
                                         interp[i][j].Zmean +=

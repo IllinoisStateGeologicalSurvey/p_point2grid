@@ -9,10 +9,14 @@ int main (int argc, char** argv)
   int c1, c2; 
  
   while((c1=fgetc(f1))!=EOF){
-    cnt1++;
+    if(c1 == '\n'){
+      cnt1++;
+      cnt2=0;
+    }
+    cnt2++;
     c2=fgetc(f2);
     if(c1 != c2){
-      printf("char pos %i, char 1 %c, char 2 %c\n", cnt1,c1,c2);
+      printf("line %i, pos %i, char 1 %c, char 2 %c\n", cnt1,cnt2, c1,c2);
 }
 }
 }
