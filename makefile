@@ -2,7 +2,7 @@
 IDIR =./include
 CC=mpic++
 #CFLAGS=-I$(IDIR) -I/usr/include/gdal 
-CFLAGS=-I$(IDIR) -g -fpermissive
+CFLAGS=-I$(IDIR) -g -fpermissive -I/usr/include/gdal 
 #CFLAGS=-I$(IDIR) -O3 -fpermissive
 ADIR=./apps
 SDIR=./src
@@ -11,7 +11,7 @@ ODIR=./obj
 LDIR =./lib
 
 #LIBS=-lm -lgdal -lcurl -lboost_program_options -lboost_iostreams
-LIBS=-lm -lboost_program_options -lboost_iostreams
+LIBS=-lm -lboost_program_options -lboost_iostreams -lgdal -ltiff
 
 
 _APP_SRC = pp2g.cpp
@@ -19,7 +19,7 @@ APP_SRC = $(patsubst %,$(ADIR)/%,$(_APP_SRC))
 APP_OBJ=  $(patsubst %.cpp,$(ODIR)/%.o,$(_APP_SRC))
 
 
-_LIB_SRC = GridFile.cpp GridMap.cpp InCoreInterp.cpp Interpolation.cpp OutCoreInterp.cpp MpiInterp.cpp
+_LIB_SRC = GridFile.cpp GridMap.cpp InCoreInterp.cpp Interpolation.cpp OutCoreInterp.cpp MpiInterp.cpp sptw.cpp
 LIB_SRC = $(patsubst %,$(SDIR)/%,$(_LIB_SRC))
 LIB_OBJ=  $(patsubst %.cpp,$(ODIR)/%.o,$(_LIB_SRC))
 

@@ -1,6 +1,6 @@
 // let the compiler know which libraries we have available
 //#define CURL_FOUND
-//#define HAVE_GDAL
+#define HAVE_GDAL
 
 // Boost.Iostreams prior to 1.44.0 requires different parameters
 // This flag tells the parameter initializaiton code knows what to do.

@@ -111,10 +111,10 @@ private:
     //int reader_count_param;
 
 
-    int comm_x;
-    int comm_y;
-    double comm_data_z;
-    double comm_distance;
+    //int comm_x;
+   // int comm_y;
+    //double comm_data_z;
+    //double comm_distance;
     int row_stride;  // set for all processes, this is the y grid stride between workers, last worker my have larger y total size
     int w_row_start_index; // set only for workers aka writers
     int w_row_end_index; // set only for workers aka writers

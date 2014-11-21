@@ -57,11 +57,23 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <float.h>
 #include <math.h>
 #include <mpi.h>
+#include <sstream>
 
 
 #ifdef HAVE_GDAL
 #include "gdal_priv.h"
 #include "ogr_spatialref.h"
+#include <ogr_api.h>
+#include <ogr_spatialref.h>
+#include <gdal.h>
+#include <gdal_priv.h>
+#include "sptw/sptw.h"
+using sptw::PTIFF;
+using sptw::open_raster;
+using sptw::close_raster;
+using sptw::write_area;
+using std::stringstream;
+//using sptw::write_subset;
 #endif
 
 MpiInterp::MpiInterp(double dist_x, double dist_y,
@@ -1895,65 +1907,92 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
     } // if (is_writer)
 
 #ifdef HAVE_GDAL
-    GDALDataset **gdalFiles;
-    char gdalFileName[1024];
+    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_File *gdalFiles = NULL;
+    char  **gdalFileNames = NULL;
 
-    // open GDAL GeoTIFF files
+    // allocate gdalFiles and gdalFileNames, then create GDAL GeoTIFF templates with first_writer_rank
     if (outputFormat == OUTPUT_FORMAT_GDAL_GTIFF
             || outputFormat == OUTPUT_FORMAT_ALL)
     {
-        GDALAllRegister ();
-
-        if ((gdalFiles = (GDALDataset **) malloc (
-                sizeof(GDALDataset *) * numTypes)) == NULL)
+        if ((gdalFiles = (MPI_File *) malloc (
+                sizeof(MPI_File *) * numTypes)) == NULL)
         {
-            cerr << "File array allocation error" << endl;
+            cerr << "gdalFiles allocation error" << endl;
+            return -1;
+        }
+        if ((gdalFileNames = (char **) malloc (sizeof(char *) * numTypes))
+                == NULL)
+        {
+            cerr << "gdalFileNames allocation error" << endl;
             return -1;
         }
 
+
+        GDALAllRegister ();
+
         for (i = 0; i < numTypes; i++)
         {
+            gdalFiles[i] = NULL;
+            gdalFileNames[i] = NULL;
             if (outputType & type[i])
             {
-                strncpy (gdalFileName, outputName, sizeof(gdalFileName));
-                strncat (gdalFileName, ext[i], strlen (ext[i]));
-                strncat (gdalFileName, ".tif", strlen (".tif"));
+                gdalFileNames[i] = (char*)malloc(sizeof(char)*1024);
+                strncpy (gdalFileNames[i], outputName, 1024);
+                strncat (gdalFileNames[i], ext[i], strlen (ext[i]));
+                strncat (gdalFileNames[i], ".tif", strlen (".tif"));
 
                 char **papszMetadata;
                 const char *pszFormat = "GTIFF";
                 GDALDriver* tpDriver =
                         GetGDALDriverManager ()->GetDriverByName (pszFormat);
 
-                if (tpDriver)
+                if (tpDriver && rank == first_writer_rank)
                 {
                     papszMetadata = tpDriver->GetMetadata ();
                     if (CSLFetchBoolean (papszMetadata, GDAL_DCAP_CREATE,
                                          FALSE))
                     {
-                        char **papszOptions = NULL;
-                        gdalFiles[i] = tpDriver->Create (gdalFileName,
+                        char **options = NULL;
+
+                        options = CSLSetNameValue(options, "SPARSE_OK", "YES");
+
+                        GDALDataset *gdal = tpDriver->Create (gdalFileNames[i],
                                                          GRID_SIZE_X,
-                                                         GRID_SIZE_Y, 1,
+                                                         GRID_SIZE_Y,
+                                                         1,
                                                          GDT_Float32,
-                                                         papszOptions);
-                        if (gdalFiles[i] == NULL)
+                                                         options);
+
+
+                        if (gdal == NULL)
                         {
-                            cerr << "File open error: " << gdalFileName << endl;
+                            cerr << "File open error: " << gdalFileNames[i] << endl;
                             return -1;
                         }
                         else
                         {
                             if (adfGeoTransform)
-                                gdalFiles[i]->SetGeoTransform (adfGeoTransform);
+                                gdal->SetGeoTransform (adfGeoTransform);
                             if (wkt)
-                                gdalFiles[i]->SetProjection (wkt);
+                                gdal->SetProjection (wkt);
+                            GDALRasterBand *tBand = gdal->GetRasterBand (1);
+                            tBand->SetNoDataValue (-9999.f);
+                            //float f;
+                            //tBand->RasterIO (GF_Write, 0, 0, 1, 1, &f,
+                            //                  1, 1, GDT_Float32, 0, 0);
+                            //tBand->RasterIO (GF_Write, GRID_SIZE_X - 1,
+                            //                 GRID_SIZE_Y - 1, 1, 1,
+                            //                 &f, 1, 1, GDT_Float32, 0,
+                            //                 0);
+                            GDALClose ((GDALDatasetH) gdal);
                         }
                     }
                 }
             }
             else
             {
-                gdalFiles[i] = NULL;
+                gdalFileNames[i] = NULL;
             }
         }
     }
@@ -1962,71 +2001,96 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
         gdalFiles = NULL;
     }
 
+    MPI_Barrier(MPI_COMM_WORLD);
+
     if (gdalFiles != NULL)
     {
         for (i = 0; i < numTypes; i++)
         {
-            if (gdalFiles[i] != NULL)
+            if (gdalFileNames[i] != NULL)
             {
-                float *poRasterData = new float[GRID_SIZE_X * GRID_SIZE_Y];
-                for (int j = 0; j < GRID_SIZE_X * GRID_SIZE_Y; j++)
+                gdalFiles[i] = open_raster (gdalFileNames[i]);
+                if (is_writer)
                 {
-                    poRasterData[j] = 0;
-                }
 
-                for (j = GRID_SIZE_Y - 1; j >= 0; j--)
-                {
-                    for (k = 0; k < GRID_SIZE_X; k++)
+                    int row_count = w_row_end_index - w_row_start_index - 1;
+                    float *poRasterData = new float[row_count * GRID_SIZE_X];
+                    for (j = 0; j < row_count * GRID_SIZE_X; j++)
                     {
-                        int index = j * GRID_SIZE_X + k;
+                        poRasterData[j] = 0;
+                    }
 
-                        if (interp[k][j].empty == 0 && interp[k][j].filled == 0)
+                    for (k = 0; k < row_count; k++)
+                    {
+                        for (j = 0; j < GRID_SIZE_X; j++)
                         {
-                            poRasterData[index] = -9999.f;
-                        }
-                        else
-                        {
-                            switch (i)
+                            int index = k * GRID_SIZE_X + j;
+
+                            if (interp[k][j].empty == 0
+                                    && interp[k][j].filled == 0)
                             {
-                                case 0:
-                                    poRasterData[index] = interp[k][j].Zmin;
-                                    break;
+                                poRasterData[index] = -9999.f;
+                            }
+                            else
+                            {
+                                switch (i)
+                                {
+                                    case 0:
+                                        poRasterData[index] = interp[k][j].Zmin;
+                                        break;
 
-                                case 1:
-                                    poRasterData[index] = interp[k][j].Zmax;
-                                    break;
+                                    case 1:
+                                        poRasterData[index] = interp[k][j].Zmax;
+                                        break;
 
-                                case 2:
-                                    poRasterData[index] = interp[k][j].Zmean;
-                                    break;
+                                    case 2:
+                                        poRasterData[index] =
+                                                interp[k][j].Zmean;
+                                        break;
 
-                                case 3:
-                                    poRasterData[index] = interp[k][j].Zidw;
-                                    break;
+                                    case 3:
+                                        poRasterData[index] = interp[k][j].Zidw;
+                                        break;
 
-                                case 4:
-                                    poRasterData[index] = interp[k][j].count;
-                                    break;
+                                    case 4:
+                                        poRasterData[index] =
+                                                interp[k][j].count;
+                                        break;
 
-                                case 5:
-                                    poRasterData[index] = interp[k][j].Zstd;
-                                    break;
+                                    case 5:
+                                        poRasterData[index] = interp[k][j].Zstd;
+                                        break;
+                                }
                             }
                         }
                     }
-                }
-                GDALRasterBand *tBand = gdalFiles[i]->GetRasterBand (1);
-                tBand->SetNoDataValue (-9999.f);
 
-                if (GRID_SIZE_X > 0 && GRID_SIZE_Y > 0)
-                    tBand->RasterIO (GF_Write, 0, 0, GRID_SIZE_X, GRID_SIZE_Y,
-                                     poRasterData, GRID_SIZE_X, GRID_SIZE_Y,
-                                     GDT_Float32, 0, 0);
-                GDALClose ((GDALDatasetH) gdalFiles[i]);
-                delete[] poRasterData;
+
+                    printf("first_strip_offset %li\n", gdalFiles[i]->first_strip_offset);
+//                    write_area(gdalFiles[i], poRasterData, 0, 0, GRID_SIZE_X-1,row_count-1);
+
+                }
+//                close_raster (gdalFiles[i]);
+
+                //GDALRasterBand *tBand = gdalFiles[i]->GetRasterBand (1);
+                //  tBand->SetNoDataValue (-9999.f);
+
+                //if (GRID_SIZE_X > 0 && GRID_SIZE_Y > 0)
+                //   tBand->RasterIO (GF_Write, 0, 0, GRID_SIZE_X, GRID_SIZE_Y,
+                //                      poRasterData, GRID_SIZE_X, GRID_SIZE_Y,
+                //                   GDT_Float32, 0, 0);
+                // tBand->RasterIO (GF_Write, 0, 0, 1,1,
+                //                                      poRasterData, 1, 1,
+                //                                       GDT_Float32, 0, 0);
+                //  tBand->RasterIO (GF_Write, 100-1,100-1, 1, 1,
+                //                                                        poRasterData, 1, 1,
+                //                                 GDT_Float32, 0, 0);
+                //GDALClose ((GDALDatasetH) gdalFiles[i]);
+                //delete[] poRasterData;
             }
         }
     }
+
 #endif // HAVE_GDAL
 
     // close files
