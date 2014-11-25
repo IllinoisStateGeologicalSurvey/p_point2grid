@@ -68,6 +68,12 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <gdal.h>
 #include <gdal_priv.h>
 #include "sptw/sptw.h"
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+
 using sptw::PTIFF;
 using sptw::open_raster;
 using sptw::close_raster;
@@ -1907,109 +1913,265 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
     } // if (is_writer)
 
 #ifdef HAVE_GDAL
-    MPI_Barrier(MPI_COMM_WORLD);
-    MPI_File *gdalFiles = NULL;
-    char  **gdalFileNames = NULL;
 
-    // allocate gdalFiles and gdalFileNames, then create GDAL GeoTIFF templates with first_writer_rank
+    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_File *tifFiles = NULL;
+    char tifFileName[1024];
+    char tifTemplateName[1024];
+
+
     if (outputFormat == OUTPUT_FORMAT_GDAL_GTIFF
             || outputFormat == OUTPUT_FORMAT_ALL)
     {
-        if ((gdalFiles = (MPI_File *) malloc (
-                sizeof(MPI_File *) * numTypes)) == NULL)
-        {
-            cerr << "gdalFiles allocation error" << endl;
-            return -1;
-        }
-        if ((gdalFileNames = (char **) malloc (sizeof(char *) * numTypes))
+        if ((tifFiles = (MPI_File *) malloc (sizeof(MPI_File) * numTypes))
                 == NULL)
         {
-            cerr << "gdalFileNames allocation error" << endl;
+            cerr << "tifFiles MPI_File malloc error: " << endl;
             return -1;
         }
-
-
-        GDALAllRegister ();
+        tif_file_mpi_offset = (MPI_Offset *) malloc (
+                sizeof(MPI_Offset) * numTypes); // write position after header
+        tif_file_mpi_size = (unsigned int *) malloc (
+                sizeof(unsigned int) * numTypes);
+        tif_file_mpi_sizes = (unsigned int **) malloc (
+                sizeof(unsigned int *) * numTypes);
 
         for (i = 0; i < numTypes; i++)
         {
-            gdalFiles[i] = NULL;
-            gdalFileNames[i] = NULL;
             if (outputType & type[i])
             {
-                gdalFileNames[i] = (char*)malloc(sizeof(char)*1024);
-                strncpy (gdalFileNames[i], outputName, 1024);
-                strncat (gdalFileNames[i], ext[i], strlen (ext[i]));
-                strncat (gdalFileNames[i], ".tif", strlen (".tif"));
-
-                char **papszMetadata;
-                const char *pszFormat = "GTIFF";
-                GDALDriver* tpDriver =
-                        GetGDALDriverManager ()->GetDriverByName (pszFormat);
-
-                if (tpDriver && rank == first_writer_rank)
-                {
-                    papszMetadata = tpDriver->GetMetadata ();
-                    if (CSLFetchBoolean (papszMetadata, GDAL_DCAP_CREATE,
-                                         FALSE))
-                    {
-                        char **options = NULL;
-
-                        options = CSLSetNameValue(options, "SPARSE_OK", "YES");
-
-                        GDALDataset *gdal = tpDriver->Create (gdalFileNames[i],
-                                                         GRID_SIZE_X,
-                                                         GRID_SIZE_Y,
-                                                         1,
-                                                         GDT_Float32,
-                                                         options);
-
-
-                        if (gdal == NULL)
-                        {
-                            cerr << "File open error: " << gdalFileNames[i] << endl;
-                            return -1;
-                        }
-                        else
-                        {
-                            if (adfGeoTransform)
-                                gdal->SetGeoTransform (adfGeoTransform);
-                            if (wkt)
-                                gdal->SetProjection (wkt);
-                            GDALRasterBand *tBand = gdal->GetRasterBand (1);
-                            tBand->SetNoDataValue (-9999.f);
-                            //float f;
-                            //tBand->RasterIO (GF_Write, 0, 0, 1, 1, &f,
-                            //                  1, 1, GDT_Float32, 0, 0);
-                            //tBand->RasterIO (GF_Write, GRID_SIZE_X - 1,
-                            //                 GRID_SIZE_Y - 1, 1, 1,
-                            //                 &f, 1, 1, GDT_Float32, 0,
-                            //                 0);
-                            GDALClose ((GDALDatasetH) gdal);
-                        }
-                    }
-                }
+                strncpy (tifFileName, outputName, sizeof(tifFileName));
+                strncat (tifFileName, ext[i], strlen (ext[i]));
+                strncat (tifFileName, ".tif", strlen (".tif"));
+                MPI_File_open (MPI_COMM_WORLD, tifFileName,
+                MPI_MODE_CREATE | MPI_MODE_WRONLY,
+                               MPI_INFO_NULL, &(tifFiles[i]));
+                MPI_File_set_size (tifFiles[i], 0);
+                tif_file_mpi_offset[i] = 0;
+                tif_file_mpi_sizes[i] = (unsigned int *) malloc (
+                        sizeof(unsigned int) * process_count);
+                tif_file_mpi_size[i] = 0;
             }
             else
             {
-                gdalFileNames[i] = NULL;
+                tifFiles[i] = NULL;
             }
         }
     }
     else
     {
-        gdalFiles = NULL;
+        tifFiles = NULL;
     }
+
+    // create header and directory, correct the strip offsets and sizes, all with first writer process, then calculate write offsets for other processes
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    if(rank == first_writer_rank)
+    {
+        strncpy (tifFileName, outputName, sizeof(tifTemplateName));
+        strncat (tifFileName, ".template.tif", strlen (".template.tif"));
+        GDALAllRegister ();
+        char **papszMetadata;
+        const char *pszFormat = "GTIFF";
+        GDALDriver* tpDriver = GetGDALDriverManager ()->GetDriverByName (pszFormat);
+        papszMetadata = tpDriver->GetMetadata ();
+        if (CSLFetchBoolean (papszMetadata, GDAL_DCAP_CREATE, FALSE))
+        {
+            char **options = NULL;
+            options = CSLSetNameValue(options, "SPARSE_OK", "YES");
+            GDALDataset *gdal = tpDriver->Create (tifFileName,
+                                                         GRID_SIZE_X,
+                                                         GRID_SIZE_Y,
+                                                         1,
+                                                         GDT_Float32,
+                                                  options);
+            if (gdal == NULL)
+            {
+                cerr << "File create error: " << tifFileName << endl;
+                return -1;
+            }
+            else
+            {
+                if (adfGeoTransform)
+                    gdal->SetGeoTransform (adfGeoTransform);
+                if (wkt)
+                    gdal->SetProjection (wkt);
+                GDALRasterBand *tBand = gdal->GetRasterBand (1);
+                tBand->SetNoDataValue (-9999.f);
+                //float f;
+                //tBand->RasterIO (GF_Write, 0, 0, 1, 1, &f,
+                //                  1, 1, GDT_Float32, 0, 0);
+                //tBand->RasterIO (GF_Write, GRID_SIZE_X - 1,
+                //                 GRID_SIZE_Y - 1, 1, 1,
+                //                 &f, 1, 1, GDT_Float32, 0,
+                //                 0);
+                GDALClose ((GDALDatasetH) gdal);
+            }
+
+
+            //**************************************************
+
+            unsigned char b[1024];
+            int fd = open(tifFileName, O_RDWR);
+
+            // read directory offset
+            lseek(fd, 4, SEEK_SET);
+            read(fd, b, 4);
+            unsigned int directory_offset = parse_uint(b);
+
+            // read entry count
+            lseek(fd, directory_offset, SEEK_SET);
+            read(fd, b, 2);
+            unsigned short entry_cnt = parse_ushort(b);
+            unsigned int bytes_per_row;
+            unsigned int rows_per_strip;
+            unsigned int strip_count;
+            unsigned int strip_offsets;
+            unsigned int strip_byte_counts;
+            unsigned int bytes_per_strip;
+            unsigned int bytes_last_strip;
+
+
+            for(i=0; i<entry_cnt; i++)
+            {
+                read(fd, b, 12);
+                unsigned short tag_id = parse_ushort(b);
+                unsigned short data_type = parse_ushort(b+2);
+                unsigned short data_count = parse_uint(b+4);
+                unsigned short data_offset = parse_uint(b+8);
+
+                if(tag_id == 273) // TIFFTAG_STRIPOFFSETS
+                {
+                    strip_count = data_count;
+                    strip_offsets = data_offset;
+                }
+                if (tag_id == 279) // TIFFTAG_STRIPBYTECOUNTS
+                {
+                    strip_byte_counts = data_offset;
+                }
+
+                if (tag_id == 278) // TIFFTAG_ROWSPERSTRIP
+                {
+                    rows_per_strip = data_offset;
+                }
+
+            }
+            bytes_per_row = GRID_SIZE_X * 4;
+            bytes_per_strip = bytes_per_row * rows_per_strip;
+            bytes_last_strip = bytes_per_strip;
+            if(GRID_SIZE_Y % rows_per_strip)
+            {
+                bytes_last_strip = (GRID_SIZE_Y % rows_per_strip) * bytes_per_row;
+            }
+
+
+            printf("strip offset count and offset %u %u\n", strip_count, strip_offsets);
+            printf("strip byte counts offset %u\n", strip_byte_counts);
+            printf("rows per strip  %u\n", rows_per_strip);
+
+            // now update the strip offsets and strip byte counts
+
+
+
+
+            close(fd);
+
+            /*
+
+
+            // Read number of directory entries
+            int64_t entry_count = read_int64(tiff_file, doffset, big_endian);
+
+
+
+
+             // Read offset to first directory
+             int64_t doffset = 0;
+             doffset = read_int64(tiff_file, 8, big_endian);
+
+             // Read number of directory entries
+             int64_t entry_count = read_int64(tiff_file, doffset, big_endian);
+             // directory offset + sizeof directory count
+             int64_t entry_offset = doffset + sizeof(int64_t);
+
+             int64_t tile_count = 0;
+             const int64_t tile_size_bytes = tile_size * tile_size * tiff_file->band_count
+                 * tiff_file->band_type_size;
+             int64_t first_tile_offset = 0;
+
+             for (int64_t i = 0; i < entry_count; ++i) {
+               // Read identifying tag of directory entry
+               uint8_t tag_buffer[2];
+               MPI_File_read_at(tiff_file->fh,
+                                entry_offset,
+                                tag_buffer,
+                                2,
+                                MPI_BYTE,
+                                &status);
+               int16_t entry_tag = parse_int16(tag_buffer, big_endian);
+
+               // Read count of elements in entry
+               int64_t element_count = read_int64(tiff_file, entry_offset+4, big_endian);
+
+               // Read entry data
+               int64_t entry_data = read_int64(tiff_file, entry_offset+12, big_endian);
+
+               // Check if directory type is TIFFTAG_TILEOFFSETS
+               if (entry_tag == TIFFTAG_TILEOFFSETS) {
+                 // Read location of first_offset
+                 int64_t first_offset = read_int64(tiff_file, entry_data, big_endian);
+                 first_tile_offset = first_offset;
+                 tile_count = element_count;
+
+                 for (int64_t j = 1; j < element_count; ++j) {
+                   write_int64(tiff_file,
+                       entry_data+(sizeof(int64_t)*j),
+                       first_offset+(tile_size_bytes*j),
+                       big_endian);
+                 }
+               } else if (entry_tag == TIFFTAG_TILEBYTECOUNTS) {
+                 for (int64_t j = 1; j < element_count; ++j) {
+                   write_int64(tiff_file,
+                               entry_data+(sizeof(int64_t)*j),
+                               tile_size_bytes,
+                               big_endian);
+                 }
+               }
+               entry_offset += 20;
+             }
+
+             // Calculate end of file and write to it
+             uint8_t buffer[10];
+             buffer[0] = 0;
+             int64_t file_size = (tile_count * tile_size_bytes) + first_tile_offset;
+             MPI_File_write_at(tiff_file->fh, file_size-1, buffer, 1, MPI_BYTE, &status);
+             return SP_None;
+
+            */
+
+
+
+            //*********************************************************
+
+
+        }
+    }
+
 
     MPI_Barrier(MPI_COMM_WORLD);
 
+
+
+
+
+/*
     if (gdalFiles != NULL)
     {
         for (i = 0; i < numTypes; i++)
         {
             if (gdalFileNames[i] != NULL)
             {
-                gdalFiles[i] = open_raster (gdalFileNames[i]);
+                //gdalFiles[i] = open_raster (gdalFileNames[i]);
                 if (is_writer)
                 {
 
@@ -2090,7 +2252,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
             }
         }
     }
-
+*/
 #endif // HAVE_GDAL
 
     // close files
@@ -2115,4 +2277,36 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
 
     return 0;
 }
+
+
+unsigned int MpiInterp::parse_uint(unsigned char *buffer)
+{
+   unsigned int result = 0;
+   unsigned int temp = 0;
+   temp = buffer[3];
+   result |= temp<<24;
+   temp = buffer[2];
+   result |= temp<<16;
+   temp = buffer[1];
+   result |= temp<<8;
+   temp = buffer[0];
+   result |= temp<<0;
+
+   return result;
+}
+
+unsigned short MpiInterp::parse_ushort(unsigned char *buffer)
+{
+   unsigned short result = 0;
+   unsigned short temp = 0;
+
+   temp = buffer[1];
+   result |= temp<<8;
+   temp = buffer[0];
+   result |= temp<<0;
+
+   return result;
+}
+
+
 

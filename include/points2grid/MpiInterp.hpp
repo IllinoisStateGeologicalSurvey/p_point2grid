@@ -108,6 +108,9 @@ private:
     int outputFile(char *outputName, int outputFormat, unsigned int outputType, double *adfGeoTransform, const char* wkt);
     void flushMpiBuffers (MPI_File *arcFiles, MPI_File *gridFiles, int numTypes, int max_buffer_size);
 
+    unsigned int parse_uint(unsigned char *buffer);
+    unsigned short parse_ushort(unsigned char *buffer);
+
     //int reader_count_param;
 
 
@@ -115,7 +118,7 @@ private:
    // int comm_y;
     //double comm_data_z;
     //double comm_distance;
-    int row_stride;  // set for all processes, this is the y grid stride between workers, last worker my have larger y total size
+    int row_stride;  // set for all processes, this is the y grid stride between workers, last worker my have smaller row size
     int w_row_start_index; // set only for workers aka writers
     int w_row_end_index; // set only for workers aka writers
     int get_target_rank(int grid_index);
@@ -154,6 +157,10 @@ private:
     unsigned int *grid_file_mpi_size;        // each element is the total size of data that will be written by a worker
                                             // used to set write offsets calculated by first sprintf loop
     unsigned int **grid_file_mpi_sizes;      // used in an Allgather to calculate the write offset of THIS process
+
+    MPI_Offset *tif_file_mpi_offset;
+    unsigned int *tif_file_mpi_size;        // each element is the total size of data that will be written by a worker
+    unsigned int **tif_file_mpi_sizes;      // used in an Allgather to calculate the write offset of THIS process
 
 
 };
