@@ -1918,6 +1918,8 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
     MPI_File *tifFiles = NULL;
     char tifFileName[1024];
     char tifTemplateName[1024];
+    strncpy (tifTemplateName, outputName, sizeof(outputName));
+    strncat (tifTemplateName, ".template.tif", strlen (".template.tif"));
 
 
     if (outputFormat == OUTPUT_FORMAT_GDAL_GTIFF
@@ -1968,8 +1970,6 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
     MPI_Barrier(MPI_COMM_WORLD);
     if(rank == first_writer_rank)
     {
-        strncpy (tifFileName, outputName, sizeof(tifTemplateName));
-        strncat (tifFileName, ".template.tif", strlen (".template.tif"));
         GDALAllRegister ();
         char **papszMetadata;
         const char *pszFormat = "GTIFF";
@@ -1979,7 +1979,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
         {
             char **options = NULL;
             options = CSLSetNameValue(options, "SPARSE_OK", "YES");
-            GDALDataset *gdal = tpDriver->Create (tifFileName,
+            GDALDataset *gdal = tpDriver->Create (tifTemplateName,
                                                          GRID_SIZE_X,
                                                          GRID_SIZE_Y,
                                                          1,
@@ -1987,7 +1987,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                                                   options);
             if (gdal == NULL)
             {
-                cerr << "File create error: " << tifFileName << endl;
+                cerr << "File create error: " << tifTemplateName << endl;
                 return -1;
             }
             else
@@ -2011,8 +2011,12 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
 
             //**************************************************
 
+
+            struct stat stat_buf;
+            stat(tifTemplateName, &stat_buf);
+            off_t st_size = stat_buf.st_size;
             unsigned char b[1024];
-            int fd = open(tifFileName, O_RDWR);
+            int fd = open(tifTemplateName, O_RDWR);
 
             // read directory offset
             lseek(fd, 4, SEEK_SET);
@@ -2070,9 +2074,23 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
             printf("rows per strip  %u\n", rows_per_strip);
 
             // now update the strip offsets and strip byte counts
-
-
-
+            unsigned int cur_write_offset = st_size;
+            for(i=0;i<strip_count;i++)
+            {
+                //write cur_strip
+                lseek(fd, strip_offsets + (4*i), SEEK_SET);
+                write(fd, &cur_write_offset, 4);
+                cur_write_offset += bytes_per_strip;
+                lseek(fd, strip_byte_counts + (4*i), SEEK_SET);
+                if(i!=strip_count-1)
+                {
+                    write(fd, &bytes_per_strip, 4);
+                }
+                else
+                {
+                    write(fd, &bytes_last_strip, 4);
+                }
+            }
 
             close(fd);
 
@@ -2159,23 +2177,23 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
 
 
     MPI_Barrier(MPI_COMM_WORLD);
+    struct stat stat_buf;
+    stat(tifTemplateName, &stat_buf);
+    off_t st_size = stat_buf.st_size;
 
 
 
-
-
-/*
-    if (gdalFiles != NULL)
+    if (tifFiles != NULL)
     {
         for (i = 0; i < numTypes; i++)
         {
-            if (gdalFileNames[i] != NULL)
+            if (tifFiles[i] != NULL)
             {
                 //gdalFiles[i] = open_raster (gdalFileNames[i]);
                 if (is_writer)
                 {
 
-                    int row_count = w_row_end_index - w_row_start_index - 1;
+                    int row_count = w_row_end_index - w_row_start_index + 1;
                     float *poRasterData = new float[row_count * GRID_SIZE_X];
                     for (j = 0; j < row_count * GRID_SIZE_X; j++)
                     {
@@ -2227,32 +2245,36 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         }
                     }
 
+                    MPI_Offset offset = st_size + ((rank-first_writer_rank) * row_stride * GRID_SIZE_X * 4);
 
-                    printf("first_strip_offset %li\n", gdalFiles[i]->first_strip_offset);
+
+                    if(rank == first_writer_rank)
+                    {
+                        unsigned char *b = (unsigned char *)malloc(st_size * (sizeof(unsigned char)));
+                        int fd = open(tifTemplateName, O_RDONLY);
+  printf("tifTemplateName %s, %i, %i %li %i %i\n", tifTemplateName, fd, rank, st_size, row_stride, row_count);
+
+                        read(fd, b, (unsigned long) st_size);
+                        MPI_File_write_at(tifFiles[i], 0, b, st_size, MPI_BYTE, &status);
+                        close(fd);
+
+
+                    }
+
+
+                    MPI_File_write_at(tifFiles[i], offset, poRasterData, row_count*GRID_SIZE_X*4, MPI_BYTE, &status);
+
+
+                    //rintf("first_strip_offset %li\n", tifFiles[i]->first_strip_offset);
 //                    write_area(gdalFiles[i], poRasterData, 0, 0, GRID_SIZE_X-1,row_count-1);
 
                 }
-//                close_raster (gdalFiles[i]);
 
-                //GDALRasterBand *tBand = gdalFiles[i]->GetRasterBand (1);
-                //  tBand->SetNoDataValue (-9999.f);
-
-                //if (GRID_SIZE_X > 0 && GRID_SIZE_Y > 0)
-                //   tBand->RasterIO (GF_Write, 0, 0, GRID_SIZE_X, GRID_SIZE_Y,
-                //                      poRasterData, GRID_SIZE_X, GRID_SIZE_Y,
-                //                   GDT_Float32, 0, 0);
-                // tBand->RasterIO (GF_Write, 0, 0, 1,1,
-                //                                      poRasterData, 1, 1,
-                //                                       GDT_Float32, 0, 0);
-                //  tBand->RasterIO (GF_Write, 100-1,100-1, 1, 1,
-                //                                                        poRasterData, 1, 1,
-                //                                 GDT_Float32, 0, 0);
-                //GDALClose ((GDALDatasetH) gdalFiles[i]);
-                //delete[] poRasterData;
             }
         }
     }
-*/
+
+
 #endif // HAVE_GDAL
 
     // close files
@@ -2272,6 +2294,15 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
         {
             if (gridFiles[i] != NULL)
                 MPI_File_close (&(gridFiles[i]));
+        }
+    }
+
+    if (tifFiles != NULL)
+    {
+        for (i = 0; i < numTypes; i++)
+        {
+            if (tifFiles[i] != NULL)
+                MPI_File_close (&(tifFiles[i]));
         }
     }
 
