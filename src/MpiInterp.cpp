@@ -290,7 +290,7 @@ int MpiInterp::init()
     //}
     if(DEBUG)
     {
-    printf("MPIInterp.init() done, w_row_start_index %i,  w_row_end_index %i, row_stride %i, GRID_SIZE_Y %i, GRID_SIZE_X %i, rank %i\n", w_row_start_index,w_row_end_index,row_stride,GRID_SIZE_Y,GRID_SIZE_X,rank );
+        printf("MPIInterp.init() done, w_row_start_index %i,  w_row_end_index %i, row_stride %i, GRID_SIZE_Y %i, GRID_SIZE_X %i, rank %i\n", w_row_start_index,w_row_end_index,row_stride,GRID_SIZE_Y,GRID_SIZE_X,rank );
     }
     MPI_Barrier(MPI_COMM_WORLD);
     return 0;

@@ -250,7 +250,7 @@ int Interpolation::interpolation(char *inputName,
     //clock_t t0, t1;
     if(rank == 0)
     {
-        printf("Interpolation Starts, rank %i\n", rank);
+        //printf("Interpolation Starts, rank %i\n", rank);
     }
     //t0 = times(&tbuf);
 
@@ -385,13 +385,13 @@ int Interpolation::interpolation(char *inputName,
         }
     }
 
-    printf("finish begin, rank %i\n", rank);
+    //printf("finish begin, rank %i\n", rank);
     if((rc = interp->finish(outputName, outputFormat, outputType)) < 0)
     {
         cerr << "interp->finish() error" << endl;
         return -1;
     }
-    printf("finish end, rank %i\n", rank);
+    //printf("finish end, rank %i\n", rank);
 
     //cerr << "Interpolation::interpolation() done successfully, rank " << rank << endl;
 

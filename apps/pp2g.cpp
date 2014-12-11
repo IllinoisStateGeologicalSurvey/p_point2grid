@@ -78,6 +78,7 @@ const std::string appName("points2grid");
 int main(int argc, char **argv)
 {
     // mpi variables
+    if(MPI_TIME){MPI_START = clock();}
     int rank = 0;
     int process_count = 1;
     int reader_count = 1;
@@ -393,7 +394,7 @@ int main(int argc, char **argv)
                 return 0;
             }
 
-            printf ("MPI task %d has started...\n", rank);
+            //printf ("MPI task %d has started...\n", rank);
         }
         if(interpolation_mode == INTERP_MPI)
         {
@@ -453,7 +454,7 @@ int main(int argc, char **argv)
     }
 
     t1 = clock();
-    if (rank == 0)
+    if (rank == 0 && !MPI_TIME)
     {
         printf ("DEM generation + Output time: %10.2f\n",
                 (double) (t1 - t0) / CLOCKS_PER_SEC);
@@ -469,5 +470,16 @@ int main(int argc, char **argv)
     {
         delete ip;
     }
+    if(MPI_TIME)
+    {
+        MPI_END = clock();
+        printf ("%li %li %li\n", sizeof(clock_t), sizeof(long), sizeof(long long));
+
+
+
+
+
+    }
+
     return 0;
 }
