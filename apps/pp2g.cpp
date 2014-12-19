@@ -75,15 +75,17 @@ namespace po = boost::program_options;
 
 const std::string appName("points2grid");
 
+
 int main(int argc, char **argv)
 {
-    // mpi variables
-    if(MPI_TIME){MPI_START = clock();}
+
+    //if(MPI_TIME){MPI_START = clock();}
     int rank = 0;
     int process_count = 1;
     int reader_count = 1;
     int buffer_size = 10000;
     int is_mpi = 0;
+    mpi_times *timer = NULL;
     // end, mpi variables
     clock_t t0, t1;
 
@@ -123,7 +125,8 @@ int main(int argc, char **argv)
      "'outcore' stores working data on the filesystem, 'parallel' uses number of processes specified by mpirun -n\n"
      "'auto' (default) guesses based on the size of the data file")
      ("reader_count,c", po::value<int>(), "when interpolation mode is 'parallel', arg is number of reader processes, default is 1")
-     ("buffer_size,b", po::value<int>(), "when interpolation mode is 'parallel', arg is write buffer size in bytes, default is 10000 bytes");
+     ("buffer_size,b", po::value<int>(), "when interpolation mode is 'parallel', arg is write buffer size in bytes, default is 10000 bytes")
+     ("mpi_times,t", "time mpi run");
 
     df.add_options()
 #ifdef CURL_FOUND
@@ -331,7 +334,9 @@ int main(int argc, char **argv)
         if(vm.count("buffer_size")) {
             buffer_size = vm["buffer_size"].as<int>();
         }
-
+        if(vm.count("mpi_times")) {
+            timer = (mpi_times *)malloc(sizeof(mpi_times));
+        }
 
 #ifdef CURL_FOUND
         // download file from URL, and set input name
@@ -378,6 +383,7 @@ int main(int argc, char **argv)
 
         if (interpolation_mode == INTERP_MPI)
         {
+            if(timer)timer->start = clock();
             MPI_Init (&argc, &argv);
             MPI_Comm_size (MPI_COMM_WORLD, &process_count);
             MPI_Comm_rank (MPI_COMM_WORLD, &rank);
@@ -432,19 +438,27 @@ int main(int argc, char **argv)
 
     t0 = clock();
 
+    if(timer)
+    {
+        if(rank == reader_count)printf("Allocating memory...\n");
+        timer->init_start = clock();
+    }
     Interpolation *ip = new Interpolation(GRID_DIST_X, GRID_DIST_Y, searchRadius,
-                                          window_size, interpolation_mode, rank, process_count, reader_count, buffer_size);
+                                          window_size, interpolation_mode, rank, process_count, reader_count, buffer_size, timer);
 
     if(ip->init(inputName, input_format) < 0)
     {
         fprintf(stderr, "Interpolation::init() error\n");
         return -1;
     }
-
+    if(timer)
+    {
+        timer->init_end = clock();
+    }
     t1 = clock();
     if(rank == 0)
     {
-        printf("Init + Min/Max time: %10.2f\n", (double)(t1 - t0)/CLOCKS_PER_SEC);
+        //printf("Init + Min/Max time: %10.2f\n", (double)(t1 - t0)/CLOCKS_PER_SEC);
     }
     t0 = clock();
     if(ip->interpolation(inputName, outputName, input_format, output_format, type) < 0)
@@ -454,7 +468,7 @@ int main(int argc, char **argv)
     }
 
     t1 = clock();
-    if (rank == 0 && !MPI_TIME)
+    if (rank == 0 && !timer)
     {
         printf ("DEM generation + Output time: %10.2f\n",
                 (double) (t1 - t0) / CLOCKS_PER_SEC);
@@ -462,6 +476,51 @@ int main(int argc, char **argv)
         printf ("dimension: %d x %d\n", ip->getGridSizeX (),
                 ip->getGridSizeY ());
     }
+
+
+
+    if ((interpolation_mode == INTERP_MPI && timer))
+    {
+        MPI_Barrier (MPI_COMM_WORLD);
+        int first_writer_rank = ip->getInterp ()->getReaderCount ();
+        if (timer)
+            timer->end = clock ();
+        /*
+         long *interp_start = (long *) malloc(sizeof(long)*process_count);
+
+         MPI_Gather(&(timer->interp_start), 1, MPI_LONG,
+         interp_start, 1, MPI_LONG, 0, MPI_COMM_WORLD);
+         */
+        //int i;
+        //if (rank == 0)
+        //{
+        //for (i = 0; i < process_count; i++)
+        //{
+        //    printf ("interp_start %li, rank %i\n", interp_start[i], i);
+        //}
+        //}
+        //printf("reader count %i, writer count %i\n",ip->getInterp()->getReaderCount(), ip->getInterp()->getWriterCount());
+        //for(i=0; i<process_count; i++){
+        //    printf("reader ranks %i writer ranks %i\n",ip->getInterp()->getReaders()[i], ip->getInterp()->getWriters()[i]);
+        // }
+
+        if (rank == first_writer_rank)
+        {
+            printf("Finished...\n");
+            printf("Total time %li seconds.\n", timer->end / CLOCKS_PER_SEC - timer->start / CLOCKS_PER_SEC);
+
+            printf ("  Allocation: %li seconds.\n",
+                    timer->init_end / CLOCKS_PER_SEC - timer->init_start / CLOCKS_PER_SEC);
+            printf ("  Read and send: %li seconds.\n",
+                    timer->interp_end / CLOCKS_PER_SEC - timer->interp_start / CLOCKS_PER_SEC);
+            printf ("  Process cells: %li seconds.\n",
+                    timer->process_end / CLOCKS_PER_SEC - timer->process_start / CLOCKS_PER_SEC);
+            printf ("  Write cells: %li seconds.\n",
+                    timer->output_end / CLOCKS_PER_SEC -   timer->output_start / CLOCKS_PER_SEC);
+
+        }
+    }
+
     if (interpolation_mode == INTERP_MPI)
     {
         MPI_Finalize ();
@@ -469,16 +528,6 @@ int main(int argc, char **argv)
     else
     {
         delete ip;
-    }
-    if(MPI_TIME)
-    {
-        MPI_END = clock();
-        printf ("%li %li %li\n", sizeof(clock_t), sizeof(long), sizeof(long long));
-
-
-
-
-
     }
 
     return 0;

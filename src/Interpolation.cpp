@@ -65,22 +65,27 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <iostream> // std::cerr
 #include <string.h>
 
+
+
+
 /////////////////////////////////////////////////////////////
 // Public Methods
 /////////////////////////////////////////////////////////////
 
 Interpolation::Interpolation(double x_dist, double y_dist, double radius,
                              int _window_size, int _interpolation_mode = INTERP_AUTO,
-                             int _rank = 0, int _process_count = 1, int _reader_count = 1, int _buffer_size = 10000) : GRID_DIST_X (x_dist), GRID_DIST_Y(y_dist)
+                             int _rank = 0, int _process_count = 1, int _reader_count = 1, int _buffer_size = 10000, mpi_times *_timer = NULL) : GRID_DIST_X (x_dist), GRID_DIST_Y(y_dist)
 {
     rank = _rank;
     process_count = _process_count;
     reader_count = _reader_count;
     buffer_size = _buffer_size;
+    timer = _timer;
     data_count = 0;
     radius_sqr = radius * radius;
     window_size = _window_size;
     interpolation_mode = _interpolation_mode;
+
 
     min_x = DBL_MAX;
     min_y = DBL_MAX;
@@ -214,7 +219,7 @@ int Interpolation::init(char *inputName, int inputFormat)
     } else if (interpolation_mode == INTERP_MPI){
         //cerr << "Using mpi interp code" << endl;
 
-        interp = new MpiInterp(GRID_DIST_X, GRID_DIST_Y, GRID_SIZE_X, GRID_SIZE_Y, radius_sqr, min_x, max_x, min_y, max_y, window_size, rank, process_count, reader_count, buffer_size);
+        interp = new MpiInterp(GRID_DIST_X, GRID_DIST_Y, GRID_SIZE_X, GRID_SIZE_Y, radius_sqr, min_x, max_x, min_y, max_y, window_size, rank, process_count, reader_count, buffer_size, timer);
 
        // cerr << "Interpolation uses mpi algorithm" << endl;
     } else {
@@ -241,6 +246,12 @@ int Interpolation::interpolation(char *inputName,
                                  int outputFormat,
                                  unsigned int outputType)
 {
+    if(timer)
+    {
+        if(rank == reader_count)printf("Readers sending points to writers...\n");
+        timer->interp_start = clock();
+    }
+
     int rc;
     //unsigned int i;
     double data_x, data_y;
@@ -384,7 +395,7 @@ int Interpolation::interpolation(char *inputName,
 
         }
     }
-
+    if(timer)timer->interp_end = clock();
     //printf("finish begin, rank %i\n", rank);
     if((rc = interp->finish(outputName, outputFormat, outputType)) < 0)
     {

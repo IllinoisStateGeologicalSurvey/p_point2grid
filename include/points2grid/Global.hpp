@@ -70,20 +70,20 @@ enum INTERPOLATION_TYPE {
 };
 
 
-static int DEBUG=0;
-static int MPI_TIME=1;
-static long MPI_START;
-static long MPI_INTERP_START;
-static long MPI_INTERP_END;
-static long MPI_PROCESS_START;
-static long MPI_PROCESS_END;
-static long MPI_OUPUPUT_START;
-static long MPI_OUTPUT_END;
-static long MPI_END;
+static int DEBUG = 0;
 
-
-
-
+typedef struct _mpi_times {
+    long start;
+    long init_start;
+    long init_end;
+    long interp_start;
+    long interp_end;
+    long process_start;
+    long process_end;
+    long output_start;
+    long output_end;
+    long end;
+} mpi_times;
 
 typedef struct _grid_point_info {
         int comm;

@@ -67,7 +67,8 @@ public:
                  double _min_x, double _max_x,
                  double _min_y, double _max_y,
                  int _window_size,
-                 int _rank, int _process_count, int _reader_count, int _buffer_size);
+                 int _rank, int _process_count, int _reader_count, int _buffer_size,
+                 mpi_times *_timer);
     ~MpiInterp();
 
     virtual int init();
@@ -84,10 +85,13 @@ public:
     virtual int  getReaderCount(){ return reader_count; };
     virtual int  getWriterCount(){ return writer_count; };
 
+
+
 private:
     int rank;
     int process_count;
     int buffer_size;
+    mpi_times *timer;
     MPI_Datatype mpi_grid_point_info;
     MPI_Datatype mpi_grid_point;
     GridPoint **interp;

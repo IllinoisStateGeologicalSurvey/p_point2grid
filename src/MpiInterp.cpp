@@ -48,8 +48,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <points2grid/config.h>
 #include <points2grid/Interpolation.hpp>
 #include <points2grid/Global.hpp>
+
 #include <points2grid/GridPoint.hpp>
 #include <points2grid/MpiInterp.hpp>
+#include <points2grid/mpi_time.hpp>
 
 #include <time.h>
 #include <stdio.h>
@@ -80,12 +82,13 @@ MpiInterp::MpiInterp(double dist_x, double dist_y,
                            double _min_x, double _max_x,
                            double _min_y, double _max_y,
                            int _window_size,
-                           int _rank, int _process_count, int _reader_count, int _buffer_size)
+                           int _rank, int _process_count, int _reader_count, int _buffer_size, mpi_times *_timer = NULL)
 {
     rank = _rank;
     process_count = _process_count;
     reader_count = _reader_count;
     buffer_size = _buffer_size;
+    timer = _timer;
     //comm_done = 0;
 
     //reader_count_param = 1;
@@ -345,7 +348,13 @@ MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
 {
     int rc;
     int i, j;
+    if(timer)
+    {
+        if(rank == reader_count)printf("Writers processing cells...\n");
+        timer->process_start = clock();
+    }
     MPI_Barrier (MPI_COMM_WORLD);
+
     //printf("finish starts, rank %i\n", rank);
     // reader_count is the first writer rank, reader ranks are 0 through reader_count-1
     int first_writer_rank = reader_count;
@@ -676,10 +685,17 @@ MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
             }
         }
     }
+
+    if(timer)timer->process_end = clock();
     t0 = clock ();
     MPI_Barrier (MPI_COMM_WORLD);
     //printf ("finish ends, rank %i\n", rank);
     MPI_Barrier (MPI_COMM_WORLD);
+    if(timer)
+    {
+        if(rank == reader_count)printf("Writers writing cells...\n");
+        timer->output_start = clock();
+    }
 
     if ((rc = outputFile (outputName, outputFormat, outputType, adfGeoTransform,
                           wkt)) < 0)
@@ -687,7 +703,7 @@ MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
         cerr << "MpiInterp::finish outputFile error" << endl;
         return -1;
     }
-
+    if(timer)timer->output_end = clock();
     t1 = clock ();
 
     //cerr << "Output Execution time: " << (double)(t1 - t0)/ CLOCKS_PER_SEC << std::endl;
