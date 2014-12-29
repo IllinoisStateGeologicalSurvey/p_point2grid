@@ -141,7 +141,9 @@ private:
     // each read porocess uses these to send points to a specific writer
     grid_point_info **point_buffers;
     int *point_buffer_counts;
-
+    int mpi_point_buffer_count; // holds the number of points to be allocated in the point buffer
+                                // based on number of writers and assumed memory availability of 500 Meg/core
+                                // calculated now in init, tbd, make configurable...
 
 
     // writing

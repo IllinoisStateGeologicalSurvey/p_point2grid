@@ -270,19 +270,30 @@ int MpiInterp::init()
         // readers will set read_done[rank] = 1 when they are finished readin
         read_done[i] = 0;
     }
+    // allocate the buffers to send and receive points, use allocation max of 1000 Megs on readers
+    // limit writer allocation to 100 Megs
+    mpi_point_buffer_count = 1000000000 / sizeof(grid_point_info)/ writer_count;
+    if((mpi_point_buffer_count*sizeof(grid_point_info))> 100000000)
+    {
+        mpi_point_buffer_count =  100000000 / sizeof(grid_point_info);
+    }
+    if(rank==0)
+    {
+        printf("mpi_point_buffer_count - %i\n", mpi_point_buffer_count);
+    }
     if(is_reader)
     {
         point_buffers = (grid_point_info **) malloc (writer_count * sizeof(grid_point_info *));
         point_buffer_counts = (int *) malloc(writer_count * sizeof(int *));
         for(i=0;i<writer_count;i++)
         {
-            point_buffers[i] = (grid_point_info *)malloc(buffer_size * sizeof(grid_point_info));
+            point_buffers[i] = (grid_point_info *)malloc(mpi_point_buffer_count * sizeof(grid_point_info));
             point_buffer_counts[i] = 0;
         }
     }
     if(is_writer)
     {
-        point_buffer = (grid_point_info *)malloc(buffer_size * sizeof(grid_point_info));
+        point_buffer = (grid_point_info *)malloc(mpi_point_buffer_count * sizeof(grid_point_info));
         point_buffer_count = 0;
     }
 
@@ -924,7 +935,7 @@ void MpiInterp::updateGridPointSend(int target_rank, int x, int y, double data_z
       //            MPI_COMM_WORLD);
     //}
 
-    if(info.comm || (!info.comm && point_buffer_counts[i]==buffer_size))
+    if(info.comm || (!info.comm && point_buffer_counts[i]==mpi_point_buffer_count))
     {
         MPI_Send(&point_buffer_counts[i], 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
         MPI_Send(point_buffers[i], point_buffer_counts[i], mpi_grid_point_info, target_rank, 1, MPI_COMM_WORLD);
