@@ -249,7 +249,7 @@ int Interpolation::interpolation(char *inputName,
     if(timer)
     {
         if(rank == reader_count)printf("Readers sending points to writers...\n");
-        timer->interp_start = clock();
+        timer->interp_start = time(NULL);
     }
 
     int rc;
@@ -366,7 +366,7 @@ int Interpolation::interpolation(char *inputName,
             {
                 interp->updateGridPointRecv ();
             }
-            MPI_Barrier (MPI_COMM_WORLD);
+            //MPI_Barrier (MPI_COMM_WORLD);
         }
         else // interpolation_mode is other than INTERP_MPI
         {
@@ -395,16 +395,14 @@ int Interpolation::interpolation(char *inputName,
 
         }
     }
-    if(timer)timer->interp_end = clock();
-    //printf("finish begin, rank %i\n", rank);
+    if(timer)timer->interp_end = time(NULL);
+
     if((rc = interp->finish(outputName, outputFormat, outputType)) < 0)
     {
         cerr << "interp->finish() error" << endl;
         return -1;
     }
-    //printf("finish end, rank %i\n", rank);
 
-    //cerr << "Interpolation::interpolation() done successfully, rank " << rank << endl;
 
     return 0;
 }

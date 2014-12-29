@@ -79,7 +79,7 @@ const std::string appName("points2grid");
 int main(int argc, char **argv)
 {
 
-    //if(MPI_TIME){MPI_START = clock();}
+
     int rank = 0;
     int process_count = 1;
     int reader_count = 1;
@@ -383,7 +383,7 @@ int main(int argc, char **argv)
 
         if (interpolation_mode == INTERP_MPI)
         {
-            if(timer)timer->start = clock();
+            if(timer)timer->start = time(NULL);
             MPI_Init (&argc, &argv);
             MPI_Comm_size (MPI_COMM_WORLD, &process_count);
             MPI_Comm_rank (MPI_COMM_WORLD, &rank);
@@ -441,7 +441,7 @@ int main(int argc, char **argv)
     if(timer)
     {
         if(rank == reader_count)printf("Allocating memory...\n");
-        timer->init_start = clock();
+        timer->init_start = time(NULL);
     }
     Interpolation *ip = new Interpolation(GRID_DIST_X, GRID_DIST_Y, searchRadius,
                                           window_size, interpolation_mode, rank, process_count, reader_count, buffer_size, timer);
@@ -453,7 +453,7 @@ int main(int argc, char **argv)
     }
     if(timer)
     {
-        timer->init_end = clock();
+        timer->init_end = time(NULL);
     }
     t1 = clock();
     if(rank == 0)
@@ -484,7 +484,7 @@ int main(int argc, char **argv)
         MPI_Barrier (MPI_COMM_WORLD);
         int first_writer_rank = ip->getInterp ()->getReaderCount ();
         if (timer)
-            timer->end = clock ();
+            timer->end = time(NULL);
         /*
          long *interp_start = (long *) malloc(sizeof(long)*process_count);
 
@@ -504,21 +504,24 @@ int main(int argc, char **argv)
         //    printf("reader ranks %i writer ranks %i\n",ip->getInterp()->getReaders()[i], ip->getInterp()->getWriters()[i]);
         // }
 
-        if (rank == first_writer_rank)
-        {
-            printf("Finished...\n");
-            printf("Total time %li seconds.\n", timer->end / CLOCKS_PER_SEC - timer->start / CLOCKS_PER_SEC);
 
-            printf ("  Allocation: %li seconds.\n",
-                    timer->init_end / CLOCKS_PER_SEC - timer->init_start / CLOCKS_PER_SEC);
-            printf ("  Read and send: %li seconds.\n",
-                    timer->interp_end / CLOCKS_PER_SEC - timer->interp_start / CLOCKS_PER_SEC);
-            printf ("  Process cells: %li seconds.\n",
-                    timer->process_end / CLOCKS_PER_SEC - timer->process_start / CLOCKS_PER_SEC);
-            printf ("  Write cells: %li seconds.\n",
-                    timer->output_end / CLOCKS_PER_SEC -   timer->output_start / CLOCKS_PER_SEC);
+        if (rank == reader_count)
+                {
+                    printf("Finished, first writer process times...\n");
+                    printf("Total time %li seconds.\n", timer->end - timer->start);
 
-        }
+                    printf ("  Allocation: %li seconds.\n",
+                            timer->init_end - timer->init_start);
+                    printf ("  Read and send: %li seconds.\n",
+                            timer->interp_end - timer->interp_start);
+                    printf ("  Process cells: %li seconds.\n",
+                            timer->process_end - timer->process_start);
+                    printf ("  Write cells: %li seconds.\n",
+                            timer->output_end -   timer->output_start);
+
+       }
+
+
     }
 
     if (interpolation_mode == INTERP_MPI)

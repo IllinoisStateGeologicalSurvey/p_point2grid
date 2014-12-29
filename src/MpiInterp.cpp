@@ -348,12 +348,12 @@ MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
 {
     int rc;
     int i, j;
+    MPI_Barrier (MPI_COMM_WORLD);
     if(timer)
     {
         if(rank == reader_count)printf("Writers processing cells...\n");
-        timer->process_start = clock();
+        timer->process_start = time(NULL);
     }
-    MPI_Barrier (MPI_COMM_WORLD);
 
     //printf("finish starts, rank %i\n", rank);
     // reader_count is the first writer rank, reader ranks are 0 through reader_count-1
@@ -686,15 +686,15 @@ MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
         }
     }
 
-    if(timer)timer->process_end = clock();
+    if(timer)timer->process_end = time(NULL);
     t0 = clock ();
     MPI_Barrier (MPI_COMM_WORLD);
-    //printf ("finish ends, rank %i\n", rank);
-    MPI_Barrier (MPI_COMM_WORLD);
+
+
     if(timer)
     {
         if(rank == reader_count)printf("Writers writing cells...\n");
-        timer->output_start = clock();
+        timer->output_start = time(NULL);
     }
 
     if ((rc = outputFile (outputName, outputFormat, outputType, adfGeoTransform,
@@ -703,7 +703,7 @@ MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
         cerr << "MpiInterp::finish outputFile error" << endl;
         return -1;
     }
-    if(timer)timer->output_end = clock();
+    if(timer)timer->output_end = time(NULL);
     t1 = clock ();
 
     //cerr << "Output Execution time: " << (double)(t1 - t0)/ CLOCKS_PER_SEC << std::endl;
