@@ -399,13 +399,10 @@ int main(int argc, char **argv)
                 MPI_Finalize ();
                 return 0;
             }
-
-            //printf ("MPI task %d has started...\n", rank);
-        }
-        if(interpolation_mode == INTERP_MPI)
-        {
             MPI_Barrier(MPI_COMM_WORLD);
+
         }
+
         if (rank == 0)
         {
             cout << "Parameters ************************" << endl;
@@ -482,7 +479,7 @@ int main(int argc, char **argv)
     if ((interpolation_mode == INTERP_MPI && timer))
     {
         MPI_Barrier (MPI_COMM_WORLD);
-        int first_writer_rank = ip->getInterp ()->getReaderCount ();
+        //int first_writer_rank = ip->getInterp ()->getReaderCount ();
         if (timer)
             timer->end = time(NULL);
         /*

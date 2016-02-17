@@ -2,7 +2,7 @@
 # =================
 
 cmake_minimum_required(VERSION 2.6)
-project(pp2g)
+project(points2grid)
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/modules" ${CMAKE_MODULE_PATH} )
 set(CMAKE_INCLUDE_DIRECTORIES_PROJECT_BEFORE ON)
 
@@ -22,11 +22,11 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 message(STATUS "Setting ${CMAKE_PROJECT_NAME} build type - ${CMAKE_BUILD_TYPE}")
 
-set (PP2G_VERSION_MAJOR 1)
-set (PP2G_VERSION_MINOR 3)
-set (PP2G_VERSION_PATCH 0)
+set (P2G_VERSION_MAJOR 1)
+set (P2G_VERSION_MINOR 3)
+set (P2G_VERSION_PATCH 0)
 
-set (PP2G_VERSION_STRING "${PP2G_VERSION_MAJOR}.${PP2G_VERSION_MINOR}.${PP2G_VERSION_PATCH}")
+set (P2G_VERSION_STRING "${P2G_VERSION_MAJOR}.${P2G_VERSION_MINOR}.${P2G_VERSION_PATCH}")
 
 # setup dependencies
 # ==================
@@ -34,7 +34,13 @@ set (PP2G_VERSION_STRING "${PP2G_VERSION_MAJOR}.${PP2G_VERSION_MINOR}.${PP2G_VER
 # Boost (required)
 # ----------------
 
-  
+  if(WIN32)
+    if (MSVC)
+      set(Boost_USE_STATIC_LIBS   ON)
+      set(Boost_USE_MULTITHREADED ON)
+      set(Boost_USE_STATIC_RUNTIME    OFF)
+    endif(MSVC)
+  endif(WIN32)
 find_package( Boost 1.40 COMPONENTS iostreams program_options system filesystem REQUIRED )
 
 if(Boost_FOUND
@@ -60,13 +66,6 @@ if(Boost_SEMVER VERSION_LESS 1.44.0)
   message("Using old Boost.Iostreams")
   set(OLD_BOOST_IOSTREAMS TRUE)
 endif()
-
-
-#find_package(MPI)
-
-#include_directories(${MPI_C_INCLUDE_PATH})
-#SET(CMAKE_C_COMPILER ${MPI_C_COMPILER})
-#SET(CMAKE_CXX_COMPILER ${MPI_CXX_COMPILER})
 
 # GDAL/OGR support - optional, default=ON
 option(WITH_GDAL "Choose if GDAL support should be built" TRUE)
@@ -129,7 +128,14 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
   endif()
 endif()
 
-
+if(WIN32)
+  if (MSVC)
+      add_definitions(-D_CRT_SECURE_NO_DEPRECATE)
+      add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+      add_definitions(-D_CRT_NONSTDC_NO_WARNING)
+      add_definitions(-D_SCL_SECURE_NO_WARNINGS)
+  endif()
+endif()
 
 # and now the actual project that we'll build
 # ===========================================
@@ -153,7 +159,7 @@ set(LIBRARY_CPP
   ${SRC_DIR}/InCoreInterp.cpp
   ${SRC_DIR}/Interpolation.cpp
   ${SRC_DIR}/OutCoreInterp.cpp
-  ${SRC_DIR}/MpiInterp.cpp
+
 )
 
 set(POINTS2GRID_HPP
@@ -166,7 +172,6 @@ set(POINTS2GRID_HPP
   ${INCLUDE_DIR}/GridMap.hpp
   ${INCLUDE_DIR}/GridPoint.hpp
   ${INCLUDE_DIR}/InCoreInterp.hpp
-  ${INCLUDE_DIR}/MpiInterp.hpp
 )
 
 # setup source groups
@@ -181,22 +186,32 @@ source_group("Source Files" FILES ${POINTS2GRID_CPP})
 # ---------------------------
 
 
-set(PP2G_LIB_NAME pp2gl)
-add_library(${PP2G_LIB_NAME} SHARED ${LIBRARY_CPP} ${POINTS2GRID_HPP})
-target_link_libraries(${PP2G_LIB_NAME} ${Boost_LIBRARIES} ${CURL_LIBRARIES})
+set(P2G_LIB_NAME pts2grd)
+add_library(${P2G_LIB_NAME} SHARED ${LIBRARY_CPP} ${POINTS2GRID_HPP})
+target_link_libraries(${P2G_LIB_NAME} ${Boost_LIBRARIES} ${CURL_LIBRARIES})
+if (WIN32)
+set_target_properties(${P2G_LIB_NAME} PROPERTIES
+     COMPILE_DEFINITIONS P2G_DLL_EXPORT)
+endif()
 
 if (BZIP2_FOUND)
-  target_link_libraries(${PP2G_LIB_NAME} ${BZIP2_LIBRARIES})
+  target_link_libraries(${P2G_LIB_NAME} ${BZIP2_LIBRARIES})
 endif()
 
 if (GDAL_FOUND)
-  target_link_libraries(${PP2G_LIB_NAME} ${GDAL_LIBRARIES})
+  target_link_libraries(${P2G_LIB_NAME} ${GDAL_LIBRARIES})
 endif()
 
-#target_link_libraries(${PP2G_LIB_NAME} ${MPI_C_LIBRARIES})
+if (APPLE)
+  set_target_properties(
+    ${P2G_LIB_NAME}
+    PROPERTIES
+    INSTALL_NAME_DIR "@rpath" BUILD_WITH_INSTALL_RPATH ON)
+endif()
 
-add_executable(pp2g ${APPS_DIR}/pp2g.cpp)
-target_link_libraries(pp2g ${PP2G_LIB_NAME}  )
+
+add_executable(points2grid ${APPS_DIR}/points2grid.cpp)
+target_link_libraries(points2grid ${P2G_LIB_NAME}  )
 if (WIN32)
 set_target_properties(points2grid PROPERTIES
      COMPILE_DEFINITIONS P2G_DLL_IMPORT)
@@ -206,12 +221,12 @@ endif()
 # install the executable
 # ----------------------
 
-install(TARGETS pp2g
+install(TARGETS points2grid
   RUNTIME DESTINATION ${DEFAULT_BIN_SUBDIR}
   LIBRARY DESTINATION ${DEFAULT_LIB_SUBDIR}
   ARCHIVE DESTINATION ${DEFAULT_LIB_SUBDIR})
 
-install(TARGETS ${PP2G_LIB_NAME}
+install(TARGETS ${P2G_LIB_NAME}
   RUNTIME DESTINATION ${DEFAULT_BIN_SUBDIR}
   LIBRARY DESTINATION ${DEFAULT_LIB_SUBDIR}
   ARCHIVE DESTINATION ${DEFAULT_LIB_SUBDIR})

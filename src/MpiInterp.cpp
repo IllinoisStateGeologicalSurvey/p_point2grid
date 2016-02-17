@@ -51,7 +51,6 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <points2grid/GridPoint.hpp>
 #include <points2grid/MpiInterp.hpp>
-#include <points2grid/mpi_time.hpp>
 
 #include <time.h>
 #include <stdio.h>
@@ -89,10 +88,6 @@ MpiInterp::MpiInterp(double dist_x, double dist_y,
     reader_count = _reader_count;
     buffer_size = _buffer_size;
     timer = _timer;
-    //comm_done = 0;
-
-    //reader_count_param = 1;
-
     is_reader = 0;
     is_writer = 0;
     readers = (int *) malloc(sizeof(int)*process_count);
@@ -885,9 +880,6 @@ void MpiInterp::update_fourth_quadrant(double data_z, int base_x, int base_y, do
         }
     }
 }
-
-// this can only be called by reader processes, currently only rank 0 is a reader
-// todo, modify reader_count to work with more than one reader
 
 int MpiInterp::get_target_rank(int row_index){
 
