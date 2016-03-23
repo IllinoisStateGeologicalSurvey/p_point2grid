@@ -2,7 +2,7 @@
 IDIR =./include
 CC=mpic++
 #CFLAGS=-I$(IDIR) -I/usr/include/gdal 
-CFLAGS=-I$(IDIR) -g -fpermissive -I/usr/include/gdal 
+CFLAGS=-I$(IDIR) -w -O2 -fpermissive -I/usr/include/gdal 
 #CFLAGS=-I$(IDIR) -O3 -fpermissive
 ADIR=./apps
 SDIR=./src
@@ -32,8 +32,10 @@ SRC = $(APP_SRC) $(LIB_SRC)
 #include .depend
 
 
-pp2g: $(APP_OBJ) $(LIB_OBJ)
+p_points2grid: $(APP_OBJ) $(LIB_OBJ)
 	$(CC) -o $@ $^ $(CFLAGS) $(LIBS)
+	mkdir -p bin
+	cp $@ bin
 
 $(ODIR)/%.o: $(ADIR)/%.cpp
 	$(CC) -c -o $@ $< $(CFLAGS)
@@ -44,5 +46,7 @@ $(ODIR)/%.o: $(SDIR)/%.cpp
 .PHONY: clean
 
 clean:
-	rm -f $(ODIR)/*.o ./.depend pp2g core points2grid
+	rm -f $(ODIR)/*.o ./.depend pp2g core points2grid p_points2grid bin/p_points2grid
+	rm -rf bin
+	
 
