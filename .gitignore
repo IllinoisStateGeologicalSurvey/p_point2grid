@@ -4,7 +4,6 @@ Makefile
 cmake_install.cmake
 CMakeCache.txt
 *.o
-config.h
 *.so
 *.dylib
 install_manifest.txt
