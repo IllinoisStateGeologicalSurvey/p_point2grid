@@ -26,7 +26,7 @@ Boost 1.55 or later must be installed.
 Install:
 
 git clone https://github.com/jwend/p_points2grid
-cd p_las2las
+cd p_points2grid
 make
 
 The p_points2grid executable is in the bin directory.
