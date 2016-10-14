@@ -58,11 +58,7 @@ using namespace std;
 #include <points2grid/InCoreInterp.hpp>
 #include <points2grid/MpiInterp.hpp>
 #include <points2grid/export.hpp>
-
-
-
-
-//class GridPoint;
+#include <points2grid/Global.hpp>
 
 class P2G_DLL Interpolation
 {
@@ -71,10 +67,10 @@ public:
                   int _window_size, int _interpolation_mode, int _rank, int _process_count, int _reader_count, int _buffer_size, mpi_times *_timer);
     ~Interpolation();
 
-    int init(char *inputName, int inputFormat);
+    int init(char **inputNames, int inputNamesSize, int inputFormat);
     int interpolation(char *inputName, char *outputName, int inputFormat,
                       int outputFormat, unsigned int type);
-    unsigned int getDataCount();
+    unsigned long getDataCount();
 
     unsigned int getGridSizeX();
     unsigned int getGridSizeY();
@@ -91,7 +87,7 @@ public:
     double GRID_DIST_X;
     double GRID_DIST_Y;
 
-    static const int MAX_POINT_SIZE = 16000000;
+//    static const int MAX_POINT_SIZE = 16000000;
     static const int WEIGHTER = 2;
 
     // update this to the maximum grid that will fit in memory
@@ -108,7 +104,7 @@ private:
     unsigned int GRID_SIZE_X;
     unsigned int GRID_SIZE_Y;
 
-    unsigned int data_count;
+    unsigned long data_count;
     double radius_sqr;
     int window_size;
     int interpolation_mode;
@@ -118,6 +114,8 @@ private:
     int rank;
     int reader_count;
     int buffer_size;
+    input_file_info *input_files;
+    int input_file_count;
     mpi_times *timer;
     // end, mpi variables
 

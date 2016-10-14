@@ -85,6 +85,8 @@ Interpolation::Interpolation(double x_dist, double y_dist, double radius,
     radius_sqr = radius * radius;
     window_size = _window_size;
     interpolation_mode = _interpolation_mode;
+    input_files = NULL;
+    input_file_count = 0;
 
 
     min_x = DBL_MAX;
@@ -100,7 +102,7 @@ Interpolation::~Interpolation()
     delete interp;
 }
 
-int Interpolation::init(char *inputName, int inputFormat)
+int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat)
 {
 
 
@@ -121,6 +123,8 @@ int Interpolation::init(char *inputName, int inputFormat)
     //t0 = times(&tbuf);
     t0 = clock();
 
+    char *inputName = inputNames[0];
+
     if(inputName == NULL)
     {
         cerr << "Wrong Input File Name" << endl;
@@ -128,53 +132,141 @@ int Interpolation::init(char *inputName, int inputFormat)
     }
 
     //printf("inputName: '%s'\n", inputName);
-
-    if (inputFormat == INPUT_ASCII) {
-        FILE *fp;
-        char line[1024];
-        double data_x, data_y;
-        //double data_z;
-
-        if((fp = fopen(inputName, "r")) == NULL)
+    if (interpolation_mode != INTERP_MPI)
+    {
+        if (inputFormat == INPUT_ASCII)
         {
-            cerr << "file open error" << endl;
-            return -1;
+            FILE *fp;
+            char line[1024];
+            double data_x, data_y;
+            //double data_z;
+
+            if ((fp = fopen (inputName, "r")) == NULL)
+            {
+                cerr << "file open error" << endl;
+                return -1;
+            }
+
+            // throw the first line away - it contains the header
+            fgets (line, sizeof(line), fp);
+
+            // read the data points to find min and max values
+            while (fgets (line, sizeof(line), fp) != NULL)
+            {
+                data_x = atof (strtok (line, ",\n"));
+                if (min_x > data_x)
+                    min_x = data_x;
+                if (max_x < data_x)
+                    max_x = data_x;
+
+                data_y = atof (strtok (NULL, ",\n"));
+                if (min_y > data_y)
+                    min_y = data_y;
+                if (max_y < data_y)
+                    max_y = data_y;
+
+                data_count++;
+
+            }
+
+            fclose (fp);
         }
+        else
+        { // las input
 
-        // throw the first line away - it contains the header
-        fgets(line, sizeof(line), fp);
+            las_file las;
+            las.open (inputName);
 
-        // read the data points to find min and max values
-        while(fgets(line, sizeof(line), fp) != NULL)
-        {
-            data_x = atof(strtok(line, ",\n"));
-            if(min_x > data_x) min_x = data_x;
-            if(max_x < data_x) max_x = data_x;
+            min_x = las.minimums ()[0];
+            min_y = las.minimums ()[1];
+            max_x = las.maximums ()[0];
+            max_y = las.maximums ()[1];
 
-            data_y = atof(strtok(NULL, ",\n"));
-            if(min_y > data_y) min_y = data_y;
-            if(max_y < data_y) max_y = data_y;
+            data_count = las.points_count ();
 
-            data_count++;
+            las.close ();
 
         }
-
-        fclose(fp);
-    } else { // las input
-
-        las_file las;
-        las.open(inputName);
-
-        min_x = las.minimums()[0];
-        min_y = las.minimums()[1];
-        max_x = las.maximums()[0];
-        max_y = las.maximums()[1];
-
-        data_count = las.points_count();
-        
-        las.close();
-
     }
+    else if (interpolation_mode == INTERP_MPI)
+    {
+        if (rank < reader_count)
+        {
+            input_files = (input_file_info *) malloc (
+                    inputNamesSize * sizeof(input_file_info));
+            input_file_count = inputNamesSize;
+            for (int i = 0; i < input_file_count; i++)
+            {
+                input_files->name = (char *) malloc (
+                        (strlen (inputNames[i]) + 1) * sizeof(char));
+                strcpy (input_files[i].name, inputNames[i]);
+                input_files[i].rank = -1;
+            }
+
+            for (int i = 0; i < input_file_count; i++)
+            {
+                if (rank == i % reader_count)
+                {
+                    las_file las;
+                    las.open (input_files[i].name);
+                    input_files[i].min_x = las.minimums ()[0];
+                    input_files[i].min_y = las.minimums ()[1];
+                    input_files[i].max_x = las.maximums ()[0];
+                    input_files[i].max_y = las.maximums ()[1];
+                    input_files[i].data_count = las.points_count ();
+                    input_files[i].rank = rank;
+                    las.close ();
+                }
+            }
+            for (int i = 0; i < input_file_count; i++)
+            {
+                if (input_files[i].rank == rank)
+                {
+                    for (int j = 0; i < input_file_count; j++)
+                    {
+                        if (input_files[j].rank != rank)
+                        {
+                           //MPI_Send()
+                        }
+                    }
+
+                }
+            }
+
+            for (int i = 0; i < input_file_count; i++)
+            {
+                if (input_files[i].rank != rank)
+                {
+                    for (int j = 0; i < input_file_count; j++)
+                    {
+                        if (input_files[j].rank == rank)
+                        {
+                            //MPI_Recv ()
+                        }
+                    }
+
+                }
+            }
+
+        }
+        // tmp section so for testing until above works
+        las_file las;
+        las.open (inputName);
+
+        min_x = las.minimums ()[0];
+        min_y = las.minimums ()[1];
+        max_x = las.maximums ()[0];
+        max_y = las.maximums ()[1];
+
+        data_count = las.points_count ();
+
+        las.close ();
+        // end tmp section
+    }
+
+    //MPI_Barrier(MPI_COMM_WORLD);
+
+
 
     t1 = clock();
     //printf("Min/Max searching time: %10.2f\n", (double)(t1 - t0)/CLOCKS_PER_SEC);
@@ -253,29 +345,16 @@ int Interpolation::interpolation(char *inputName,
     }
 
     int rc;
-    //unsigned int i;
+
     double data_x, data_y;
     double data_z;
 
-    //struct tms tbuf;
-    //clock_t t0, t1;
     if(rank == 0)
     {
         //printf("Interpolation Starts, rank %i\n", rank);
     }
-    //t0 = times(&tbuf);
 
-    //cerr << "data_count: " << data_count << endl;
-
-    /*
-      if((rc = interp->init()) < 0)
-      {
-      cerr << "inter->init() error" << endl;
-      return -1;
-      }
-    */
-
-    if (inputFormat == INPUT_ASCII) {
+    if (inputFormat == INPUT_ASCII && interpolation_mode != INTERP_MPI) {
         FILE *fp;
         char line[1024];
 
@@ -412,7 +491,7 @@ void Interpolation::setRadius(double r)
     radius_sqr = r * r;
 }
 
-unsigned int Interpolation::getDataCount()
+unsigned long Interpolation::getDataCount()
 {
     return data_count;
 }

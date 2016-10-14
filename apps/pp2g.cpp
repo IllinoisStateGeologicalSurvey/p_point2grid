@@ -90,6 +90,9 @@ int main(int argc, char **argv)
     clock_t t0, t1;
 
     // parameters
+
+    char **inputNames;
+    int inputNamesSize;
     char inputName[1024] = {0};
     char inputURL[2048] = {0};
     char outputName[1024] = {0};
@@ -105,7 +108,7 @@ int main(int argc, char **argv)
 
     // argument processing..
     po::options_description general("General options"),
-       df("Data file"),
+       df("Data file(s)"),
        ot("Output Type"),
        res("Resolution"),
        nf("Null Filling"),
@@ -118,6 +121,7 @@ int main(int argc, char **argv)
     ("output_format", po::value<std::string>(), "'all' generates every possible format,\n"
      "'arc' for ArcGIS format,\n"
      "'grid' for Ascii GRID format,\n"
+     "'tif' for GDAL GeoTIFF format,\n"
      "the default value is --all")
     ("input_format", po::value<std::string>(), "'ascii' expects input point cloud in ASCII format\n"
      "'las' expects input point cloud in LAS format (default)")
@@ -134,7 +138,8 @@ int main(int argc, char **argv)
     ("data_file_url,l", po::value<std::string>(), "URL of unzipped plain text data file"
      "You must specify either a data_file_name or data_file_url.");
 #else
-    ("data_file_name,i", po::value<std::string>(), "required. path to unzipped plain text data file");
+//    ("data_file_name,i", po::value<std::string>(), "required. path(s) to unzipped las or plain text data files");
+    ("data_file_name,i", po::value< std::vector<string> >()->multitoken(), "required. path(s) to unzipped las or plain text data files");
 #endif
 
     ot.add_options()
@@ -184,6 +189,8 @@ int main(int argc, char **argv)
                 output_format = OUTPUT_FORMAT_ARC_ASCII;
             else if(of.compare("grid") == 0)
                 output_format = OUTPUT_FORMAT_GRID_ASCII;
+            else if(of.compare("tif") == 0)
+                            output_format = OUTPUT_FORMAT_GDAL_GTIFF;
             else {
                 throw std::logic_error("'" + of + "' is not a recognized output_format");
             }
@@ -284,12 +291,28 @@ int main(int argc, char **argv)
             throw std::logic_error("you must specify a valid data file");
         }
 #else
-        if(!vm.count("data_file_name")) {
+        if(!vm.count("data_file_name"))
+        {
             throw std::logic_error("data_file_name  must be specified");
         }
-        else {
-            strncpy(inputName, vm["data_file_name"].as<std::string>().c_str(), sizeof(inputName));
-            if (!strcmp(inputName, "")) {
+        else
+        {
+            inputNames = (char **)malloc(vm["data_file_name"].as<std::vector<string> >().size() * sizeof(char*));
+            inputNamesSize = vm["data_file_name"].as<std::vector<string> >().size();
+
+            for(unsigned i = 0; i< vm["data_file_name"].as<std::vector<string> >().size(); i++)
+            {
+                inputNames[i] = (char *) malloc( ( strlen(vm["data_file_name"].as<std::vector<string> >()[i].c_str()) + 1 ) * sizeof(char));
+                strcpy(inputNames[i],vm["data_file_name"].as<std::vector<string> >()[i].c_str());
+            }
+            for(unsigned i = 0; i < inputNamesSize; i++)
+            {
+                cout << inputNames[i] << "\n";
+            }
+
+            strncpy(inputName, inputNames[0], sizeof(inputName));
+            if (!strcmp(inputName, ""))
+            {
                 throw std::logic_error("data_file_name must not be an empty string");
             }
         }
@@ -443,7 +466,7 @@ int main(int argc, char **argv)
     Interpolation *ip = new Interpolation(GRID_DIST_X, GRID_DIST_Y, searchRadius,
                                           window_size, interpolation_mode, rank, process_count, reader_count, buffer_size, timer);
 
-    if(ip->init(inputName, input_format) < 0)
+    if(ip->init(inputNames, inputNamesSize, input_format) < 0)
     {
         fprintf(stderr, "Interpolation::init() error\n");
         return -1;

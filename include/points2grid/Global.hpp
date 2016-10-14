@@ -93,4 +93,15 @@ typedef struct _grid_point_info {
         double distance;
 } grid_point_info;
 
+typedef struct _input_file_info {
+        char *name;
+        double min_x;
+        double min_y;
+        double max_x;
+        double max_y;
+        long data_count;
+        long rank;
+        long point_start;
+        long point_stop;
 
+} input_file_info;
