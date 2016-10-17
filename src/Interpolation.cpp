@@ -65,6 +65,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <iostream> // std::cerr
 #include <string.h>
 
+#include "mpi.h"
+
 
 
 
@@ -197,10 +199,16 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat)
             input_file_count = inputNamesSize;
             for (int i = 0; i < input_file_count; i++)
             {
-                input_files->name = (char *) malloc (
+                input_files[i].name = (char *) malloc (
                         (strlen (inputNames[i]) + 1) * sizeof(char));
                 strcpy (input_files[i].name, inputNames[i]);
-                input_files[i].rank = -1;
+
+                input_files[i].min_x = 0;
+                input_files[i].min_y = 0;
+                input_files[i].max_x = 0;
+                input_files[i].max_y = 0;
+                input_files[i].point_count = 0;
+                input_files[i].peek_rank = -1;
             }
 
             for (int i = 0; i < input_file_count; i++)
@@ -213,20 +221,30 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat)
                     input_files[i].min_y = las.minimums ()[1];
                     input_files[i].max_x = las.maximums ()[0];
                     input_files[i].max_y = las.maximums ()[1];
-                    input_files[i].data_count = las.points_count ();
-                    input_files[i].rank = rank;
+                    input_files[i].point_count = las.points_count ();
+                    input_files[i].peek_rank = rank;
                     las.close ();
+                    //printf("rank = %i i = %i data_count = %li\n", rank, i, input_files[i].point_count);
+
                 }
+                printf("rank = %i i = %i data_count = %li input_files[i].rank = %i\n", rank, i, input_files[i].point_count, input_files[i].peek_rank);
             }
             for (int i = 0; i < input_file_count; i++)
             {
-                if (input_files[i].rank == rank)
+                if (input_files[i].peek_rank != -1)
                 {
-                    for (int j = 0; i < input_file_count; j++)
+                    for (int j = 0; j < reader_count; j++)
                     {
-                        if (input_files[j].rank != rank)
+                        if (rank != j) //&& (input_file_count/reader_count + 1) * (i/reader_count) + j < input_file_count)
                         {
-                           //MPI_Send()
+
+                            MPI_Send (input_files[i].name, strlen(input_files[i].name)+1, MPI_CHAR, j, 1, MPI_COMM_WORLD);
+                            MPI_Send (&(input_files[i].min_x), 1, MPI_DOUBLE, j, 2, MPI_COMM_WORLD);
+                            MPI_Send (&(input_files[i].min_y), 1, MPI_DOUBLE, j, 3, MPI_COMM_WORLD);
+                            MPI_Send (&(input_files[i].max_x), 1, MPI_DOUBLE, j, 4, MPI_COMM_WORLD);
+                            MPI_Send (&(input_files[i].max_y), 1, MPI_DOUBLE, j, 5, MPI_COMM_WORLD);
+                            MPI_Send (&(input_files[i].point_count), 1, MPI_LONG, j, 6, MPI_COMM_WORLD);
+                            MPI_Send (&(input_files[i].peek_rank), 1, MPI_INT, j, 7, MPI_COMM_WORLD);
                         }
                     }
 
@@ -235,21 +253,32 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat)
 
             for (int i = 0; i < input_file_count; i++)
             {
-                if (input_files[i].rank != rank)
+                if (input_files[i].peek_rank == -1)
                 {
-                    for (int j = 0; i < input_file_count; j++)
-                    {
-                        if (input_files[j].rank == rank)
-                        {
-                            //MPI_Recv ()
-                        }
-                    }
-
+                    MPI_Recv (input_files[i].name, strlen(input_files[i].name)+1, MPI_CHAR, i % reader_count, 1, MPI_COMM_WORLD, NULL);
+                    MPI_Recv (&(input_files[i].min_x), 1, MPI_DOUBLE, i % reader_count, 2, MPI_COMM_WORLD, NULL);
+                    MPI_Recv (&(input_files[i].min_y), 1, MPI_DOUBLE, i % reader_count, 3, MPI_COMM_WORLD, NULL);
+                    MPI_Recv (&(input_files[i].max_x), 1, MPI_DOUBLE, i % reader_count, 4, MPI_COMM_WORLD, NULL);
+                    MPI_Recv (&(input_files[i].max_y), 1, MPI_DOUBLE, i % reader_count, 5, MPI_COMM_WORLD, NULL);
+                    MPI_Recv (&(input_files[i].point_count), 1, MPI_LONG, i % reader_count, 6, MPI_COMM_WORLD, NULL);
+                    MPI_Recv (&(input_files[i].peek_rank), 1, MPI_INT, i % reader_count, 7, MPI_COMM_WORLD, NULL);
                 }
+            }
+            min_x = min_y = DBL_MAX;
+            max_x = max_y = DBL_MIN;
+            data_count = 0;
+            for (int i = 0; i < input_file_count; i++){
+                if(input_files[i].min_x < min_x){ min_x = input_files[i].min_x; }
+                if(input_files[i].min_y < min_y){ min_y = input_files[i].min_y; }
+                if(input_files[i].max_x > max_x){ max_x = input_files[i].max_x; }
+                if(input_files[i].max_y > max_y){ max_y = input_files[i].max_y; }
+                data_count += input_files[i].point_count;
+                printf("rank = %i data_count = %li\n", rank, input_files[i].point_count);
             }
 
         }
-        // tmp section so for testing until above works
+        // tmp section for testing until above works
+        /*
         las_file las;
         las.open (inputName);
 
@@ -259,8 +288,8 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat)
         max_y = las.maximums ()[1];
 
         data_count = las.points_count ();
-
         las.close ();
+        */
         // end tmp section
     }
 
@@ -282,6 +311,21 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat)
 
     GRID_SIZE_X = (int)(ceil((max_x - min_x)/GRID_DIST_X)) + 1;
     GRID_SIZE_Y = (int)(ceil((max_y - min_y)/GRID_DIST_Y)) + 1;
+
+    if(rank == 0){
+        for(int i = reader_count; i < process_count; i++){
+            MPI_Send(&GRID_SIZE_X, 1, MPI_UNSIGNED, i, 1, MPI_COMM_WORLD);
+            MPI_Send(&GRID_SIZE_Y, 1, MPI_UNSIGNED, i, 1, MPI_COMM_WORLD);
+        }
+    }
+    if(rank>=reader_count){
+        MPI_Recv(&GRID_SIZE_X, 1, MPI_UNSIGNED, 0, 1, MPI_COMM_WORLD, NULL);
+        MPI_Recv(&GRID_SIZE_Y, 1, MPI_UNSIGNED, 0, 1, MPI_COMM_WORLD, NULL);
+    }
+
+
+    printf("GRID_SIZE_x %i, grid_size y %i, rank %i\n", GRID_SIZE_X, GRID_SIZE_Y, rank);
+
 
     //cerr << "GRID_SIZE_X " << GRID_SIZE_X << endl;
     //cerr << "GRID_SIZE_Y " << GRID_SIZE_Y << endl;
@@ -309,11 +353,11 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat)
         cerr << "Interpolation uses out-of-core algorithm" << endl;
 
     } else if (interpolation_mode == INTERP_MPI){
-        //cerr << "Using mpi interp code" << endl;
+        printf("before constructor rank %i  pc %i rc %i \n", rank, process_count, reader_count);
 
         interp = new MpiInterp(GRID_DIST_X, GRID_DIST_Y, GRID_SIZE_X, GRID_SIZE_Y, radius_sqr, min_x, max_x, min_y, max_y, window_size, rank, process_count, reader_count, buffer_size, timer);
 
-       // cerr << "Interpolation uses mpi algorithm" << endl;
+
     } else {
         cerr << "Using incore interp code" << endl;
 
@@ -321,12 +365,13 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat)
 
         cerr << "Interpolation uses in-core algorithm" << endl;
     }
+    printf("before init rank %i\n", rank);
     if(interp->init() < 0)
     {
         cerr << "inter->init() error" << endl;
         return -1;
     }
-
+    printf("after init rank %i\n", rank);
     //cerr << "Interpolation::init() done successfully" << endl;
 
     return 0;
@@ -394,50 +439,54 @@ int Interpolation::interpolation(char *inputName,
         {
             if (interp->getIsReader ())
             {
-                las_file las;
-                las.open (inputName);
-
-                size_t count = las.points_count ();
-                size_t index (0);
-                size_t stride = count / interp->getReaderCount ();
-                size_t left_over_count = count % interp->getReaderCount ();
-                index = rank * stride;
-                count = (rank + 1) * stride;
-                if (rank == interp->getReaderCount () - 1)
+                if (input_file_count == 1)
                 {
-                    count += left_over_count;
-                }
+                    strcpy(inputName, input_files[0].name);
+                    las_file las;
+                    las.open (inputName);
 
-                while (index < count)
-                {
-                    data_x = las.getX (index);
-                    data_y = las.getY (index);
-                    data_z = las.getZ (index);
-
-                    data_x -= min_x;
-                    data_y -= min_y;
-                    //
-                    //cerr << "calling update rank "<< rank << endl;
-                    if ((rc = interp->update (data_x, data_y, data_z)) < 0)
+                    size_t count = las.points_count ();
+                    size_t index (0);
+                    size_t stride = count / interp->getReaderCount ();
+                    size_t left_over_count = count % interp->getReaderCount ();
+                    index = rank * stride;
+                    count = (rank + 1) * stride;
+                    if (rank == interp->getReaderCount () - 1)
                     {
-                        cerr << "interp->update() error while processing "
-                                << endl;
-                        return -1;
+                        count += left_over_count;
                     }
-                    index++;
-                }
-                interp->getReadDone ()[rank] = 1;
 
-                //interp->comm_done = 1;
-                //if (process_count > 1)
-                //{
-                // tell all writers that this reader is finished sending points
-                int i;
-                for (i = 0; i < process_count; i++)
-                {
-                    if (interp->getWriters ()[i])
+                    while (index < count)
                     {
-                        interp->updateGridPointSend (i, 1, 1, 1, 1);
+                        data_x = las.getX (index);
+                        data_y = las.getY (index);
+                        data_z = las.getZ (index);
+
+                        data_x -= min_x;
+                        data_y -= min_y;
+                        //
+                        //cerr << "calling update rank "<< rank << endl;
+                        if ((rc = interp->update (data_x, data_y, data_z)) < 0)
+                        {
+                            cerr << "interp->update() error while processing "
+                                    << endl;
+                            return -1;
+                        }
+                        index++;
+                    }
+                    interp->getReadDone ()[rank] = 1;
+
+                    //interp->comm_done = 1;
+                    //if (process_count > 1)
+                    //{
+                    // tell all writers that this reader is finished sending points
+                    int i;
+                    for (i = 0; i < process_count; i++)
+                    {
+                        if (interp->getWriters ()[i])
+                        {
+                            interp->updateGridPointSend (i, 1, 1, 1, 1);
+                        }
                     }
                 }
             }

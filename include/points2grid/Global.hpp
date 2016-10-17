@@ -99,9 +99,6 @@ typedef struct _input_file_info {
         double min_y;
         double max_x;
         double max_y;
-        long data_count;
-        long rank;
-        long point_start;
-        long point_stop;
-
+        long point_count;
+        int peek_rank;
 } input_file_info;

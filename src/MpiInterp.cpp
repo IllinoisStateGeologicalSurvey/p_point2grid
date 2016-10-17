@@ -261,6 +261,7 @@ int MpiInterp::init()
         if(writers[i])
         {
             writer_count++;
+
         }
         // readers will set read_done[rank] = 1 when they are finished readin
         read_done[i] = 0;
@@ -899,10 +900,6 @@ int MpiInterp::get_target_rank(int row_index){
 void MpiInterp::updateGridPointSend(int target_rank, int x, int y, double data_z, double distance)
 {
 
-    //comm_x = x;
-    //comm_y = y;
-    //comm_data_z = data_z;
-    //comm_distance = distance;
     int i = target_rank - reader_count;
     grid_point_info info;
     info.comm = read_done[rank];
@@ -914,28 +911,12 @@ void MpiInterp::updateGridPointSend(int target_rank, int x, int y, double data_z
     point_buffers[i][point_buffer_counts[i]] = info;
     point_buffer_counts[i]++;
 
-    //printf("-----------------------------rank %i, target_rank %i\n", rank, target_rank);
-    //printf ("before comm_done %i, rank %i\n", comm_done, rank);
-    //MPI_Send(&(read_done[rank]), 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
-    //printf ("comm_done %i, rank %i\n", comm_done, rank);
-    //if (!read_done[rank])
-    //{
-      //  MPI_Send (&comm_x, 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
-      //  MPI_Send (&comm_y, 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
-      //  MPI_Send (&comm_data_z, 1, MPI_DOUBLE, target_rank, 1, MPI_COMM_WORLD);
-      //  MPI_Send (&comm_distance, 1, MPI_DOUBLE, target_rank, 1,
-      //            MPI_COMM_WORLD);
-    //}
-
     if(info.comm || (!info.comm && point_buffer_counts[i]==mpi_point_buffer_count))
     {
         MPI_Send(&point_buffer_counts[i], 1, MPI_INT, target_rank, 1, MPI_COMM_WORLD);
         MPI_Send(point_buffers[i], point_buffer_counts[i], mpi_grid_point_info, target_rank, 1, MPI_COMM_WORLD);
         point_buffer_counts[i] = 0;
     }
-
-
-    //MPI_Send(&info, 1, mpi_grid_point_info, target_rank, 1, MPI_COMM_WORLD);
 
 }
 
@@ -948,19 +929,7 @@ void MpiInterp::updateGridPointRecv()
     grid_point_info info;
 
     while(true){
-        //MPI_Recv(&comm_done, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, &status);
-        //if(comm_done)
-        //{
-        //    read_done[status.MPI_SOURCE] = 1;
-        //}
-        //else
-        //{
-           // MPI_Recv(&comm_x, 1, MPI_INT, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
-          //  MPI_Recv(&comm_y, 1, MPI_INT, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
-          //  MPI_Recv(&comm_data_z, 1, MPI_DOUBLE, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
-          //  MPI_Recv(&comm_distance, 1, MPI_DOUBLE, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
-        //    updateGridPoint(comm_x, comm_y, comm_data_z, comm_distance);
-        //}
+
         MPI_Recv(&point_buffer_count, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, &status);
         MPI_Recv(point_buffer, point_buffer_count, mpi_grid_point_info, status.MPI_SOURCE, 1, MPI_COMM_WORLD, &status);
 
@@ -972,11 +941,9 @@ void MpiInterp::updateGridPointRecv()
             }
             else
             {
-                //updateGridPoint(comm_x, comm_y, comm_data_z, comm_distance);
                 updateGridPoint(point_buffer[i].x, point_buffer[i].y, point_buffer[i].data_z, point_buffer[i].distance);
             }
         }
-
 
         // determine if all the readers are done sending points
         comm_done = 1;
