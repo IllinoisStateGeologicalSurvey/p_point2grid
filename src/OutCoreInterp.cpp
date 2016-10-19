@@ -1306,7 +1306,7 @@ void OutCoreInterp::get_temp_file_name(char *fname, size_t fname_len) {
     }
 #else
 
-    tname = mktemp(tname_template);
+    tname = mkstemp(tname_template);
     // tname = tempnam(NULL, pfx);
     if (tname == NULL) {
         throw std::logic_error("Could not create temporary file.");

@@ -2162,8 +2162,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
             if (tifFiles[i] != NULL)
                 MPI_File_close (&(tifFiles[i]));
         }
-    }
 
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+    unlink (tifTemplateName);
 
 #endif // HAVE_GDAL
 

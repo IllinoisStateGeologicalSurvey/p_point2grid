@@ -305,10 +305,6 @@ int main(int argc, char **argv)
                 inputNames[i] = (char *) malloc( ( strlen(vm["data_file_name"].as<std::vector<string> >()[i].c_str()) + 1 ) * sizeof(char));
                 strcpy(inputNames[i],vm["data_file_name"].as<std::vector<string> >()[i].c_str());
             }
-            for(unsigned i = 0; i < inputNamesSize; i++)
-            {
-                cout << inputNames[i] << "\n";
-            }
 
             strncpy(inputName, inputNames[0], sizeof(inputName));
             if (!strcmp(inputName, ""))
