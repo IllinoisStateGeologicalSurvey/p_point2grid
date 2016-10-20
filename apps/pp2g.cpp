@@ -90,9 +90,9 @@ int main(int argc, char **argv)
     clock_t t0, t1;
 
     // parameters
-
+    char inputDataFileName[1024] = {0};
     char **inputNames;
-    int inputNamesSize;
+    int inputNamesSize = 0;
     char inputName[1024] = {0};
     char inputURL[2048] = {0};
     char outputName[1024] = {0};
@@ -139,7 +139,9 @@ int main(int argc, char **argv)
      "You must specify either a data_file_name or data_file_url.");
 #else
 //    ("data_file_name,i", po::value<std::string>(), "required. path(s) to unzipped las or plain text data files");
-    ("data_file_name,i", po::value< std::vector<string> >()->multitoken(), "required. path(s) to unzipped las or plain text data files");
+    ("data_file_name,i", po::value< std::vector<string> >()->multitoken(), "path(s) to unzipped las or plain text data files")
+    ("input_data_file_name,f", po::value<std::string>(), "file containing list of unzipped las files, one file per line\n"
+     "You must specify either data_file_name(s) or an input_data_file_name");
 #endif
 
     ot.add_options()
@@ -291,11 +293,11 @@ int main(int argc, char **argv)
             throw std::logic_error("you must specify a valid data file");
         }
 #else
-        if(!vm.count("data_file_name"))
+        if( (!vm.count("data_file_name") && !vm.count("input_data_file_name")) || (vm.count("data_file_name") && vm.count("input_data_file_name")) )
         {
-            throw std::logic_error("data_file_name  must be specified");
+            throw std::logic_error("Specify either data_file_name or input_data_file_name.");
         }
-        else
+        else if(vm.count("data_file_name"))
         {
             inputNames = (char **)malloc(vm["data_file_name"].as<std::vector<string> >().size() * sizeof(char*));
             inputNamesSize = vm["data_file_name"].as<std::vector<string> >().size();
@@ -309,9 +311,46 @@ int main(int argc, char **argv)
             strncpy(inputName, inputNames[0], sizeof(inputName));
             if (!strcmp(inputName, ""))
             {
-                throw std::logic_error("data_file_name must not be an empty string");
+                throw std::logic_error("data_file_name is empty");
             }
         }
+        else if(vm.count("input_data_file_name"))
+        {
+            strncpy(inputDataFileName, vm["input_data_file_name"].as<std::string>().c_str(), sizeof(inputDataFileName));
+            if (!strcmp(inputDataFileName, ""))
+            {
+                throw std::logic_error("input_data_file_name is empty");
+            }
+            char *line = NULL;
+            size_t len = 0;
+            FILE *fp = fopen(inputDataFileName, "r");
+            if(!fp){
+                throw std::logic_error("Could not open input_data_file_name");
+            }
+            inputNames = NULL;
+            inputNamesSize = 0;
+            while (getline(&line, &len, fp) != -1) {
+                inputNames = (char **)realloc(inputNames, ++inputNamesSize * sizeof(char *));
+                int i;
+                for(i=strlen(line)-1; i>= 0; i--){
+                    if(!isspace(line[i])) break;
+                }
+                line[i+1] = NULL;
+                inputNames[inputNamesSize-1] = line;
+                line = NULL;
+            }
+            fclose(fp);
+            strncpy(inputName, inputNames[0], sizeof(inputName));
+            if (!strcmp(inputName, ""))
+            {
+                throw std::logic_error("input_data_file_name is empty");
+            }
+        }
+
+        //for(int i= 0; i< inputNamesSize; i++){
+        //    printf("%s %i\n", inputNames[i], i);
+        //}
+
 #endif
 
         if (!vm.count("output_file_name")) {
@@ -426,6 +465,7 @@ int main(int argc, char **argv)
         {
             cout << "Parameters ************************" << endl;
             cout << "inputName: '" << inputName << "'" << endl;
+            cout << "inputDataFileName: '" << inputDataFileName << "'" << endl;
             cout << "input_format: " << input_format << endl;
             cout << "outputName: '" << outputName << "'" << endl;
             cout << "GRID_DIST_X: " << GRID_DIST_X << endl;
@@ -461,6 +501,8 @@ int main(int argc, char **argv)
     }
     Interpolation *ip = new Interpolation(GRID_DIST_X, GRID_DIST_Y, searchRadius,
                                           window_size, interpolation_mode, rank, process_count, reader_count, buffer_size, timer);
+
+
 
     if(ip->init(inputNames, inputNamesSize, input_format) < 0)
     {

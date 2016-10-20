@@ -36,7 +36,7 @@ p_points2grid: $(APP_OBJ) $(LIB_OBJ)
 	$(CC) -o $@ $^ $(CFLAGS) $(LIBS)
 	mkdir -p bin
 	cp $@ bin
-#cp $@ ~/p_points2grid_test
+	cp $@ ~/p_points2grid_test
 
 $(ODIR)/%.o: $(ADIR)/%.cpp
 	$(CC) -c -o $@ $< $(CFLAGS)

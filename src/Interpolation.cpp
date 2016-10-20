@@ -293,11 +293,19 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat)
         for(int i = reader_count; i < process_count; i++){
             MPI_Send(&GRID_SIZE_X, 1, MPI_UNSIGNED, i, 1, MPI_COMM_WORLD);
             MPI_Send(&GRID_SIZE_Y, 1, MPI_UNSIGNED, i, 1, MPI_COMM_WORLD);
+            MPI_Send (&min_x, 1, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);
+            MPI_Send (&min_y, 1, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);
+            MPI_Send (&max_x, 1, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);
+            MPI_Send (&max_y, 1, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);
         }
     }
     if(rank>=reader_count){
         MPI_Recv(&GRID_SIZE_X, 1, MPI_UNSIGNED, 0, 1, MPI_COMM_WORLD, NULL);
         MPI_Recv(&GRID_SIZE_Y, 1, MPI_UNSIGNED, 0, 1, MPI_COMM_WORLD, NULL);
+        MPI_Recv(&min_x, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, NULL);
+        MPI_Recv(&min_y, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, NULL);
+        MPI_Recv(&max_x, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, NULL);
+        MPI_Recv(&max_y, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, NULL);
     }
 
     //printf("GRID_SIZE_x %i, grid_size y %i, rank %i\n", GRID_SIZE_X, GRID_SIZE_Y, rank);
@@ -413,6 +421,7 @@ int Interpolation::interpolation(char *inputName,
             {
                 if (input_file_count == 1)
                 {
+                    printf("input file count == 1\n");
                     strcpy(inputName, input_files[0].name);
                     las_file las;
                     las.open (inputName);
@@ -464,6 +473,8 @@ int Interpolation::interpolation(char *inputName,
 
                     for (int i = 0; i < input_file_count; i++)
                     {
+                        //printf("%s, %li, , %i, %i\n", input_files[i].name, input_files[i].point_count, input_files[i].peek_rank,  rank);
+                        //printf("%s, %lf, %lf, %lf, %lf, %i\n", input_files[i].name,  min_x, input_files[i].min_x,  min_y, input_files[i].min_y,  rank);
 
                         if (input_files[i].peek_rank == rank)
                         {
@@ -480,6 +491,9 @@ int Interpolation::interpolation(char *inputName,
                                 data_y = las.getY (index);
                                 data_z = las.getZ (index);
 
+                                //data_x =  (data_x - input_files[i].min_x) + (input_files[i].min_x - min_x);
+                                //data_y =  (data_y - input_files[i].min_y) + (input_files[i].min_y - min_y);
+
                                 data_x -= min_x;
                                 data_y -= min_y;
                                 //
@@ -494,8 +508,10 @@ int Interpolation::interpolation(char *inputName,
                                 }
                                 index++;
                             }
+                            las.close();
                         }
                     }
+                    printf ("****************** %i *********************\n", rank);
                     interp->getReadDone ()[rank] = 1;
 
                     for (int i = 0; i < process_count; i++)
