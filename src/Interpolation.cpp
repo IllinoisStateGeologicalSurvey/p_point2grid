@@ -478,7 +478,8 @@ int Interpolation::interpolation(char *inputName,
 
                         if (input_files[i].peek_rank == rank)
                         {
-
+                            printf("%s, %li, , %i, %i\n", input_files[i].name, input_files[i].point_count, input_files[i].peek_rank,  rank);
+                            printf("%s, %lf, %lf, %lf, %lf, %i\n", input_files[i].name,  min_x, input_files[i].min_x,  min_y, input_files[i].min_y,  rank);
                             las_file las;
                             las.open (input_files[i].name);
 

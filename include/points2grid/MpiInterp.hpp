@@ -152,9 +152,9 @@ private:
     MPI_Offset *arc_file_mpi_offset;
     char** arc_file_mpi_buffer;   // each element is a buffer for mpi writes of mpi_buffer_size
     int *arc_file_mpi_count;      // each element is the current data size of cooresponding element of arc_file_mpi_buffers
-    unsigned int *arc_file_mpi_size;        // each element is the total size of data that will be written by a worker
+    long *arc_file_mpi_size;        // each element is the total size of data that will be written by a worker
                                             // used to set write offsets calculated by first sprintf loop
-    unsigned int **arc_file_mpi_sizes;      // used in an Allgather to calculate the write offset of THIS process
+    long **arc_file_mpi_sizes;      // used in an Allgather to calculate the write offset of THIS process
 
 
     MPI_Offset *grid_file_mpi_offset;

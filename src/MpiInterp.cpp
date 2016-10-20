@@ -1125,10 +1125,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 sizeof(MPI_Offset) * numTypes); // write position after header
         arc_file_mpi_buffer = (char **) malloc (sizeof(char *) * numTypes);
         arc_file_mpi_count = (int *) malloc (sizeof(int) * numTypes);
-        arc_file_mpi_size = (unsigned int *) malloc (
-                sizeof(unsigned int) * numTypes);
-        arc_file_mpi_sizes = (unsigned int **) malloc (
-                sizeof(unsigned int *) * numTypes);
+        arc_file_mpi_size = (long *) malloc (
+                sizeof(long) * numTypes);
+        arc_file_mpi_sizes = (long **) malloc (
+                sizeof(long *) * numTypes);
 
         for (i = 0; i < numTypes; i++)
         {
@@ -1144,8 +1144,8 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 arc_file_mpi_offset[i] = 0;
                 arc_file_mpi_buffer[i] = (char *) malloc (
                         sizeof(char) * buffer_size);
-                arc_file_mpi_sizes[i] = (unsigned int *) malloc (
-                        sizeof(unsigned int) * process_count);
+                arc_file_mpi_sizes[i] = (long *) malloc (
+                        sizeof(long) * process_count);
                 arc_file_mpi_count[i] = 0;
                 arc_file_mpi_size[i] = 0;
             }
@@ -1569,8 +1569,8 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
         {
             if (arcFiles[i] != NULL)
             {
-                MPI_Allgather (&(arc_file_mpi_size[i]), 1, MPI_UNSIGNED,
-                               arc_file_mpi_sizes[i], 1, MPI_UNSIGNED,
+                MPI_Allgather (&(arc_file_mpi_size[i]), 1, MPI_LONG,
+                               arc_file_mpi_sizes[i], 1, MPI_LONG,
                                MPI_COMM_WORLD);
             }
         }
