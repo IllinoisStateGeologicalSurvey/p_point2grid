@@ -51,6 +51,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <points2grid/GridPoint.hpp>
 #include <points2grid/MpiInterp.hpp>
+#include <points2grid/debug.hpp>
 
 #include <time.h>
 #include <stdio.h>
@@ -1054,7 +1055,7 @@ void MpiInterp::flushMpiBuffers (MPI_File *arcFiles, MPI_File *gridFiles,
                 {
                     MPI_File_write (arcFiles[k], arc_file_mpi_buffer[k],
                                     arc_file_mpi_count[k], MPI_CHAR, &status);
-                    //printf("arc %i %lu %i\n", arc_file_mpi_count[k], strlen(arc_file_mpi_buffer[k]), rank);
+
                     arc_file_mpi_buffer[k][0] = 0;
                     arc_file_mpi_count[k] = 0;
 
@@ -1082,9 +1083,6 @@ void MpiInterp::flushMpiBuffers (MPI_File *arcFiles, MPI_File *gridFiles,
     }
 
 }
-
-
-
 
 
 int
@@ -1604,9 +1602,6 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     }
                     MPI_File_seek (arcFiles[i], arc_file_mpi_offset[i],
                     MPI_SEEK_SET);
-                    //printf ("arc_file_mpi_sizes[i] %i %u, %lli, rank %i\n", i,
-                    //        arc_file_mpi_sizes[i][rank], arc_file_mpi_offset[i],
-                    //        rank);
                 }
             }
         }

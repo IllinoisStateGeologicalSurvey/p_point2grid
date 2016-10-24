@@ -55,8 +55,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <time.h>
 #include <stdio.h>
+#include <assert.h>
 
 #include <points2grid/lasfile.hpp>
+#include <points2grid/debug.hpp>
 
 #include <boost/scoped_ptr.hpp>
 
@@ -66,9 +68,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "mpi.h"
-
-
-
 
 /////////////////////////////////////////////////////////////
 // Public Methods
@@ -473,13 +472,11 @@ int Interpolation::interpolation(char *inputName,
 
                     for (int i = 0; i < input_file_count; i++)
                     {
-                        //printf("%s, %li, , %i, %i\n", input_files[i].name, input_files[i].point_count, input_files[i].peek_rank,  rank);
-                        //printf("%s, %lf, %lf, %lf, %lf, %i\n", input_files[i].name,  min_x, input_files[i].min_x,  min_y, input_files[i].min_y,  rank);
-
                         if (input_files[i].peek_rank == rank)
                         {
-                            printf("%s, %li, , %i, %i\n", input_files[i].name, input_files[i].point_count, input_files[i].peek_rank,  rank);
-                            printf("%s, %lf, %lf, %lf, %lf, %i\n", input_files[i].name,  min_x, input_files[i].min_x,  min_y, input_files[i].min_y,  rank);
+
+                            dbg(5, "start read and send rank %i, peek_rank %i, name %s, point_count %li, global and file min_x, miny %lf, %lf, %lf, %lf\n", rank, input_files[i].peek_rank, input_files[i].name, input_files[i].point_count, min_x, input_files[i].min_x, min_y, input_files[i].min_y);
+
                             las_file las;
                             las.open (input_files[i].name);
 
@@ -491,10 +488,8 @@ int Interpolation::interpolation(char *inputName,
                                 data_x = las.getX (index);
                                 data_y = las.getY (index);
                                 data_z = las.getZ (index);
-
-                                //data_x =  (data_x - input_files[i].min_x) + (input_files[i].min_x - min_x);
-                                //data_y =  (data_y - input_files[i].min_y) + (input_files[i].min_y - min_y);
-
+                                assert(data_x >= input_files[i].min_x && data_x <= input_files[i].max_x &&
+                                       data_y >= input_files[i].min_y && data_y <= input_files[i].max_y);
                                 data_x -= min_x;
                                 data_y -= min_y;
                                 //
@@ -510,9 +505,10 @@ int Interpolation::interpolation(char *inputName,
                                 index++;
                             }
                             las.close();
+                            dbg(2, "*** rank %i, input file %s done with read and send ***\n", rank, input_files[i].name);
                         }
                     }
-                    printf ("****************** %i *********************\n", rank);
+
                     interp->getReadDone ()[rank] = 1;
 
                     for (int i = 0; i < process_count; i++)

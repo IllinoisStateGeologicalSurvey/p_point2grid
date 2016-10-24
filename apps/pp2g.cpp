@@ -58,6 +58,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <points2grid/config.h>
 #include <points2grid/Interpolation.hpp>
 #include <points2grid/Global.hpp>
+#include <points2grid/debug.hpp>
 
 #include <math.h>
 #include <time.h>
@@ -70,6 +71,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifdef CURL_FOUND
 #include <curl/curl.h>
 #endif
+
+
 
 namespace po = boost::program_options;
 
@@ -464,7 +467,7 @@ int main(int argc, char **argv)
         if (rank == 0)
         {
             cout << "Parameters ************************" << endl;
-            cout << "inputName: '" << inputName << "'" << endl;
+            cout << "first inputName: '" << inputName << "'" << endl;
             cout << "inputDataFileName: '" << inputDataFileName << "'" << endl;
             cout << "input_format: " << input_format << endl;
             cout << "outputName: '" << outputName << "'" << endl;
@@ -526,6 +529,10 @@ int main(int argc, char **argv)
     }
 
     t1 = clock();
+
+
+    MPI_Barrier (MPI_COMM_WORLD);
+
     if (rank == 0 && !timer)
     {
         printf ("DEM generation + Output time: %10.2f\n",
@@ -535,33 +542,12 @@ int main(int argc, char **argv)
                 ip->getGridSizeY ());
     }
 
-
-
     if ((interpolation_mode == INTERP_MPI && timer))
     {
-        MPI_Barrier (MPI_COMM_WORLD);
+
         //int first_writer_rank = ip->getInterp ()->getReaderCount ();
         if (timer)
             timer->end = time(NULL);
-        /*
-         long *interp_start = (long *) malloc(sizeof(long)*process_count);
-
-         MPI_Gather(&(timer->interp_start), 1, MPI_LONG,
-         interp_start, 1, MPI_LONG, 0, MPI_COMM_WORLD);
-         */
-        //int i;
-        //if (rank == 0)
-        //{
-        //for (i = 0; i < process_count; i++)
-        //{
-        //    printf ("interp_start %li, rank %i\n", interp_start[i], i);
-        //}
-        //}
-        //printf("reader count %i, writer count %i\n",ip->getInterp()->getReaderCount(), ip->getInterp()->getWriterCount());
-        //for(i=0; i<process_count; i++){
-        //    printf("reader ranks %i writer ranks %i\n",ip->getInterp()->getReaders()[i], ip->getInterp()->getWriters()[i]);
-        // }
-
 
         if (rank == reader_count)
                 {
@@ -578,6 +564,9 @@ int main(int argc, char **argv)
                             timer->output_end -   timer->output_start);
 
        }
+
+
+
 
 
     }
