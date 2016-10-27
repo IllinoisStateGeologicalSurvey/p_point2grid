@@ -60,7 +60,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <math.h>
 #include <mpi.h>
 #include <sstream>
-
+#include <assert.h>
 
 #ifdef HAVE_GDAL
 #include "gdal_priv.h"
@@ -82,7 +82,7 @@ MpiInterp::MpiInterp(double dist_x, double dist_y,
                            double _min_x, double _max_x,
                            double _min_y, double _max_y,
                            int _window_size,
-                           int _rank, int _process_count, int _reader_count, int _buffer_size, mpi_times *_timer = NULL)
+                           int _rank, int _process_count, int _reader_count, long _buffer_size, mpi_times *_timer = NULL)
 {
     rank = _rank;
     process_count = _process_count;
@@ -274,14 +274,14 @@ int MpiInterp::init()
     {
         mpi_point_buffer_count =  100000000 / sizeof(grid_point_info);
     }
-    if(rank==0)
-    {
-        printf("mpi_point_buffer_count - %i\n", mpi_point_buffer_count);
-    }
+
+
+    dbg(5, "mpi_point_buffer_count - %li\n", mpi_point_buffer_count);
+
     if(is_reader)
     {
         point_buffers = (grid_point_info **) malloc (writer_count * sizeof(grid_point_info *));
-        point_buffer_counts = (int *) malloc(writer_count * sizeof(int *));
+        point_buffer_counts = (long *) malloc(writer_count * sizeof(long));
         for(i=0;i<writer_count;i++)
         {
             point_buffers[i] = (grid_point_info *)malloc(mpi_point_buffer_count * sizeof(grid_point_info));
@@ -1040,7 +1040,7 @@ void MpiInterp::printArray()
 
 
 void MpiInterp::flushMpiBuffers (MPI_File *arcFiles, MPI_File *gridFiles,
-                            int numTypes, int max_buffer_size = 0)
+                            int numTypes, long max_buffer_size = 0)
 {
     int k = 0;
     MPI_Status status;
@@ -1122,7 +1122,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
         arc_file_mpi_offset = (MPI_Offset *) malloc (
                 sizeof(MPI_Offset) * numTypes); // write position after header
         arc_file_mpi_buffer = (char **) malloc (sizeof(char *) * numTypes);
-        arc_file_mpi_count = (int *) malloc (sizeof(int) * numTypes);
+        arc_file_mpi_count = (long *) malloc (sizeof(long) * numTypes);
         arc_file_mpi_size = (long *) malloc (
                 sizeof(long) * numTypes);
         arc_file_mpi_sizes = (long **) malloc (
@@ -1170,11 +1170,11 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
         grid_file_mpi_offset = (MPI_Offset *) malloc (
                 sizeof(MPI_Offset) * numTypes);
         grid_file_mpi_buffer = (char **) malloc (sizeof(char *) * numTypes);
-        grid_file_mpi_count = (int *) malloc (sizeof(int) * numTypes);
-        grid_file_mpi_size = (unsigned int *) malloc (
-                sizeof(unsigned int) * numTypes);
-        grid_file_mpi_sizes = (unsigned int **) malloc (
-                sizeof(unsigned int *) * numTypes);
+        grid_file_mpi_count = (long *) malloc (sizeof(long) * numTypes);
+        grid_file_mpi_size = (long *) malloc (
+                sizeof(long) * numTypes);
+        grid_file_mpi_sizes = (long **) malloc (
+                sizeof(long *) * numTypes);
 
         for (i = 0; i < numTypes; i++)
         {
@@ -1191,8 +1191,8 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 grid_file_mpi_offset[i] = 0;
                 grid_file_mpi_buffer[i] = (char *) malloc (
                         sizeof(char) * buffer_size);
-                grid_file_mpi_sizes[i] = (unsigned int *) malloc (
-                        sizeof(unsigned int) * process_count);
+                grid_file_mpi_sizes[i] = (long *) malloc (
+                        sizeof(long) * process_count);
                 grid_file_mpi_count[i] = 0;
                 grid_file_mpi_size[i] = 0;
             }
@@ -1558,7 +1558,6 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
     } // end if(is_writer)
 
     // ********** Gather, calculate, and set each worker's offset **********
-    // todo, construct new communicator for just the write processes
     MPI_Barrier (MPI_COMM_WORLD);
 
     if (arcFiles != NULL)
@@ -1580,8 +1579,8 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
         {
             if (gridFiles[i] != NULL)
             {
-                MPI_Allgather (&(grid_file_mpi_size[i]), 1, MPI_UNSIGNED,
-                               grid_file_mpi_sizes[i], 1, MPI_UNSIGNED,
+                MPI_Allgather (&(grid_file_mpi_size[i]), 1, MPI_LONG,
+                               grid_file_mpi_sizes[i], 1, MPI_LONG,
                                MPI_COMM_WORLD);
             }
         }
@@ -1887,33 +1886,30 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
 
     } // if (is_writer)
 
-#ifdef HAVE_GDAL
-
     MPI_Barrier(MPI_COMM_WORLD);
-    MPI_File *tifFiles = NULL;
-    char tifFileName[1024];
 
-    char tifTemplateName[1024];
-    strncpy (tifTemplateName, outputName, sizeof(outputName));
-    strncat (tifTemplateName, ".template.tif", strlen (".template.tif"));
-    unsigned char *tifTemplateContents;
-    unsigned int tifTemplateCount;
+#ifdef HAVE_GDAL
+    MPI_File *tifFiles = NULL;
 
     if (outputFormat == OUTPUT_FORMAT_GDAL_GTIFF
             || outputFormat == OUTPUT_FORMAT_ALL)
     {
-        if ((tifFiles = (MPI_File *) malloc (sizeof(MPI_File) * numTypes))
-                == NULL)
-        {
-            cerr << "tifFiles MPI_File malloc error: " << endl;
-            return -1;
-        }
+
+        char tifFileName[1024];
+        char tifTemplateName[1024];
+
+        strcpy (tifTemplateName, outputName);
+        strcat (tifTemplateName, ".template.big.tif");
+        dbg(2, "rank %i, outputName %s, tifTemplateName %s", rank, outputName, tifTemplateName);
+
+        unsigned char *tifTemplateContents;
+        unsigned int tifTemplateCount;
+
+        tifFiles = (MPI_File *) malloc (sizeof(MPI_File) * numTypes);
         tif_file_mpi_offset = (MPI_Offset *) malloc (
                 sizeof(MPI_Offset) * numTypes); // write position after header
-        tif_file_mpi_size = (unsigned int *) malloc (
-                sizeof(unsigned int) * numTypes);
-        tif_file_mpi_sizes = (unsigned int **) malloc (
-                sizeof(unsigned int *) * numTypes);
+        tif_file_mpi_size = (long *) malloc (sizeof(long) * numTypes);
+        tif_file_mpi_sizes = (long **) malloc (sizeof(long *) * numTypes);
 
         for (i = 0; i < numTypes; i++)
         {
@@ -1927,8 +1923,8 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                                MPI_INFO_NULL, &(tifFiles[i]));
                 MPI_File_set_size (tifFiles[i], 0);
                 tif_file_mpi_offset[i] = 0;
-                tif_file_mpi_sizes[i] = (unsigned int *) malloc (
-                        sizeof(unsigned int) * process_count);
+                tif_file_mpi_sizes[i] = (long *) malloc (
+                        sizeof(long) * process_count);
                 tif_file_mpi_size[i] = 0;
             }
             else
@@ -1936,39 +1932,32 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 tifFiles[i] = NULL;
             }
         }
-    }
-    else
-    {
-        tifFiles = NULL;
-    }
 
-    // create tifTemplate containing tiff header and directory, correct the strip offsets and sizes, all with first writer process
-
-    MPI_Barrier(MPI_COMM_WORLD);
-    if(rank == first_writer_rank)
-    {
-        GDALAllRegister ();
-        char **papszMetadata;
-        const char *pszFormat = "GTIFF";
-        GDALDriver* tpDriver = GetGDALDriverManager ()->GetDriverByName (pszFormat);
-        papszMetadata = tpDriver->GetMetadata ();
-        if (CSLFetchBoolean (papszMetadata, GDAL_DCAP_CREATE, FALSE))
+        // create tifTemplate containing tiff header and directory, correct the strip offsets and sizes, all with first writer process
+        int bigtiff = 1;
+        if (rank == first_writer_rank)
         {
-            char **options = NULL;
-            options = CSLSetNameValue(options, "SPARSE_OK", "YES");
-            GDALDataset *gdal = tpDriver->Create (tifTemplateName,
-                                                         GRID_SIZE_X,
-                                                         GRID_SIZE_Y,
-                                                         1,
-                                                         GDT_Float32,
-                                                  options);
-            if (gdal == NULL)
+            GDALAllRegister ();
+            char **papszMetadata;
+            const char *pszFormat = "GTIFF";
+            GDALDriver* tpDriver = GetGDALDriverManager ()->GetDriverByName (
+                    pszFormat);
+            papszMetadata = tpDriver->GetMetadata ();
+            if (CSLFetchBoolean (papszMetadata, GDAL_DCAP_CREATE, FALSE))
             {
-                cerr << "File create error: " << tifTemplateName << endl;
-                return -1;
-            }
-            else
-            {
+                char **options = NULL;
+                options = CSLSetNameValue (options, "SPARSE_OK", "YES");
+
+                if (bigtiff)
+                {
+                    options = CSLSetNameValue (options, "BIGTIFF", "YES");
+                }
+
+                GDALDataset *gdal = tpDriver->Create (tifTemplateName,
+                                                      GRID_SIZE_X, GRID_SIZE_Y,
+                                                      1, GDT_Float32, options);
+                assert(gdal != NULL);
+
                 if (adfGeoTransform)
                     gdal->SetGeoTransform (adfGeoTransform);
                 if (wkt)
@@ -1976,180 +1965,271 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 GDALRasterBand *tBand = gdal->GetRasterBand (1);
                 tBand->SetNoDataValue (-9999.f);
                 GDALClose ((GDALDatasetH) gdal);
+
+                struct stat stat_buf;
+                stat (tifTemplateName, &stat_buf);
+                off_t st_size = stat_buf.st_size;
+                unsigned char *b = (unsigned char *) malloc (
+                        st_size * (sizeof(unsigned char)));
+                int fd = open (tifTemplateName, O_RDWR);
+                lseek (fd, 2, SEEK_SET);
+                read (fd, b, 2);
+                unsigned long tiff_version = parse_ushort (b);
+                dbg(3, "tiff_version = %li", tiff_version);
+
+                if (tiff_version == 42) // Regular TIFF
+                {
+                    // read directory offset
+                    lseek (fd, 4, SEEK_SET);
+                    read (fd, b, 4);
+                    unsigned long directory_offset = parse_uint (b);
+
+                    // read entry count
+                    lseek (fd, directory_offset, SEEK_SET);
+                    read (fd, b, 2);
+                    unsigned long entry_cnt = parse_ushort (b);
+
+
+                    dbg(3,
+                                                                   "directory_offset %li, entry_cnt %li", directory_offset, entry_cnt);
+                    unsigned long bytes_per_row;
+                    unsigned long rows_per_strip;
+                    unsigned long strip_count;
+                    unsigned long strip_offsets;
+                    unsigned long strip_byte_counts;
+                    unsigned long bytes_per_strip;
+                    unsigned long bytes_last_strip;
+
+                    for (i = 0; i < entry_cnt; i++)
+                    {
+                        read (fd, b, 12);
+                        unsigned long tag_id = parse_ushort (b);
+                        unsigned long data_type = parse_ushort (b + 2);
+                        unsigned long data_count = parse_uint (b + 4);
+                        unsigned long data_offset = parse_uint (b + 8);
+                        dbg(3,
+                            "tag_id %li, data_type %li, data_count %li, data_offset %li",
+                            tag_id, data_type, data_count, data_offset);
+
+
+                        if (tag_id == 273) // TIFFTAG_STRIPOFFSETS
+                        {
+                            strip_count = data_count;
+                            strip_offsets = data_offset;
+                        }
+                        if (tag_id == 279) // TIFFTAG_STRIPBYTECOUNTS
+                        {
+                            strip_byte_counts = data_offset;
+                        }
+
+                        if (tag_id == 278) // TIFFTAG_ROWSPERSTRIP
+                        {
+                            rows_per_strip = data_offset;
+                        }
+
+                    }
+                }
+                else if (tiff_version == 43)
+                { // BIGTIFF
+
+                    // read directory offset
+                    lseek (fd, 8, SEEK_SET);
+                    read (fd, b, 8);
+                    unsigned long directory_offset = parse_ulong (b);
+
+                    // read entry count
+                    lseek (fd, directory_offset, SEEK_SET);
+                    read (fd, b, 8);
+                    unsigned long entry_cnt = parse_ulong (b);
+                    dbg(3,
+                                                "directory_offset %li, entry_cnt %li", directory_offset, entry_cnt);
+                    unsigned long bytes_per_row;
+                    unsigned long rows_per_strip;
+                    unsigned long strip_count;
+                    unsigned long strip_offsets;
+                    unsigned long strip_byte_counts;
+                    unsigned long bytes_per_strip;
+                    unsigned long bytes_last_strip;
+
+                    for (i = 0; i < entry_cnt; i++)
+                    {
+                        read (fd, b, 20);
+                        unsigned long tag_id = parse_ushort (b);
+                        unsigned long data_type = parse_ushort (b + 2);
+                        unsigned long data_count = parse_ulong (b + 4);
+                        unsigned long data_offset = parse_ulong (b + 12);
+                        dbg(3,
+                            "tag_id %li, data_type %li, data_count %li, data_offset %li",
+                            tag_id, data_type, data_count, data_offset);
+
+                        if (data_type == 2)
+                        {
+                            dbg(3, "data_offset %s", b + 12);
+                        }
+
+                        if (tag_id == 273) // TIFFTAG_STRIPOFFSETS
+                        {
+                            strip_count = data_count;
+                            strip_offsets = data_offset;
+                        }
+                        if (tag_id == 279) // TIFFTAG_STRIPBYTECOUNTS
+                        {
+                            strip_byte_counts = data_offset;
+                        }
+
+                        if (tag_id == 278) // TIFFTAG_ROWSPERSTRIP
+                        {
+                            rows_per_strip = data_offset;
+                        }
+
+                    }
+                }
             }
-
-            struct stat stat_buf;
-            stat(tifTemplateName, &stat_buf);
-            off_t st_size = stat_buf.st_size;
-            unsigned char *b = (unsigned char *)malloc(st_size * (sizeof(unsigned char)));
-            int fd = open(tifTemplateName, O_RDWR);
-
-            // read directory offset
-            lseek(fd, 4, SEEK_SET);
-            read(fd, b, 4);
-            unsigned int directory_offset = parse_uint(b);
-
-            // read entry count
-            lseek(fd, directory_offset, SEEK_SET);
-            read(fd, b, 2);
-            unsigned short entry_cnt = parse_ushort(b);
-            unsigned int bytes_per_row;
-            unsigned int rows_per_strip;
-            unsigned int strip_count;
-            unsigned int strip_offsets;
-            unsigned int strip_byte_counts;
-            unsigned int bytes_per_strip;
-            unsigned int bytes_last_strip;
-
-            for(i=0; i<entry_cnt; i++)
-            {
-                read(fd, b, 12);
-                unsigned short tag_id = parse_ushort(b);
-                unsigned short data_type = parse_ushort(b+2);
-                unsigned short data_count = parse_uint(b+4);
-                unsigned short data_offset = parse_uint(b+8);
-
-                if(tag_id == 273) // TIFFTAG_STRIPOFFSETS
-                {
-                    strip_count = data_count;
-                    strip_offsets = data_offset;
-                }
-                if (tag_id == 279) // TIFFTAG_STRIPBYTECOUNTS
-                {
-                    strip_byte_counts = data_offset;
-                }
-
-                if (tag_id == 278) // TIFFTAG_ROWSPERSTRIP
-                {
-                    rows_per_strip = data_offset;
-                }
-
-            }
-            bytes_per_row = GRID_SIZE_X * 4;
-            bytes_per_strip = bytes_per_row * rows_per_strip;
-            bytes_last_strip = bytes_per_strip;
-            if(GRID_SIZE_Y % rows_per_strip)
-            {
-                bytes_last_strip = (GRID_SIZE_Y % rows_per_strip) * bytes_per_row;
-            }
-
-            //printf("strip offset count and offset %u %u\n", strip_count, strip_offsets);
-            //printf("strip byte counts offset %u\n", strip_byte_counts);
-            //printf("rows per strip  %u\n", rows_per_strip);
-
-            // now update the strip offsets and strip byte counts
-            unsigned int cur_write_offset = st_size;
-            for(i=0;i<strip_count;i++)
-            {
-                //write cur_strip
-                lseek(fd, strip_offsets + (4*i), SEEK_SET);
-                write(fd, &cur_write_offset, 4);
-                cur_write_offset += bytes_per_strip;
-                lseek(fd, strip_byte_counts + (4*i), SEEK_SET);
-                if(i!=strip_count-1)
-                {
-                    write(fd, &bytes_per_strip, 4);
-                }
-                else
-                {
-                    write(fd, &bytes_last_strip, 4);
-                }
-            }
-
-            lseek(fd, 0, SEEK_SET);
-            read(fd, b, st_size);
-            // store the contents for later write by first writer process only
-            tifTemplateContents = b;
-            close(fd);
         }
     }
 
-    MPI_Barrier(MPI_COMM_WORLD);
-    struct stat stat_buf;
-    stat(tifTemplateName, &stat_buf);
-    off_t st_size = stat_buf.st_size;
-    // needed by all writers to calculate write offset
-    tifTemplateCount = st_size;
-    float *poRasterData = NULL;
-    int row_count = w_row_end_index - w_row_start_index + 1;
 
-    if (tifFiles != NULL)
-    {
-        for (i = 0; i < numTypes; i++)
-        {
-            if (tifFiles[i] != NULL)
-            {
-                //gdalFiles[i] = open_raster (gdalFileNames[i]);
-                if (is_writer)
+
+#ifdef WORKING
+                bytes_per_row = GRID_SIZE_X * 4;
+                bytes_per_strip = bytes_per_row * rows_per_strip;
+                bytes_last_strip = bytes_per_strip;
+                if (GRID_SIZE_Y % rows_per_strip)
                 {
-                    if(poRasterData == NULL)
-                    {
-                        poRasterData = new float[row_count * GRID_SIZE_X];
-                    }
-                    for (j = 0; j < row_count * GRID_SIZE_X; j++)
-                    {
-                        poRasterData[j] = 0;
-                    }
+                    bytes_last_strip = (GRID_SIZE_Y % rows_per_strip)
+                            * bytes_per_row;
+                }
 
-                    for (k = 0; k < row_count; k++)
+                printf("strip offset count and offset %u %u\n", strip_count, strip_offsets);
+                printf("strip byte counts offset %u\n", strip_byte_counts);
+                printf("rows per strip  %u\n", rows_per_strip);
+
+                // now update the strip offsets and strip byte counts
+                unsigned long cur_write_offset = st_size;
+                for (i = 0; i < strip_count; i++)
+                {
+                    //write cur_strip
+                    lseek (fd, strip_offsets + (4 * i), SEEK_SET);
+                    write (fd, &cur_write_offset, 4);
+                    cur_write_offset += bytes_per_strip;
+                    lseek (fd, strip_byte_counts + (4 * i), SEEK_SET);
+                    if (i != strip_count - 1)
                     {
-                        for (j = 0; j < GRID_SIZE_X; j++)
+                        write (fd, &bytes_per_strip, 4);
+                    }
+                    else
+                    {
+                        write (fd, &bytes_last_strip, 4);
+                    }
+                }
+
+                lseek (fd, 0, SEEK_SET);
+                read (fd, b, st_size);
+                // store the contents for later write by first writer process only
+                tifTemplateContents = b;
+                close (fd);
+            }
+        }
+
+        MPI_Barrier (MPI_COMM_WORLD);
+        struct stat stat_buf;
+        stat (tifTemplateName, &stat_buf);
+        off_t st_size = stat_buf.st_size;
+        // needed by all writers to calculate write offset
+        tifTemplateCount = st_size;
+        float *poRasterData = NULL;
+        int row_count = w_row_end_index - w_row_start_index + 1;
+
+        if (tifFiles != NULL)
+        {
+            for (i = 0; i < numTypes; i++)
+            {
+                if (tifFiles[i] != NULL)
+                {
+                    //gdalFiles[i] = open_raster (gdalFileNames[i]);
+                    if (is_writer)
+                    {
+                        if (poRasterData == NULL)
                         {
-                            int index = k * GRID_SIZE_X + j;
+                            poRasterData = new float[row_count * GRID_SIZE_X];
+                        }
+                        for (j = 0; j < row_count * GRID_SIZE_X; j++)
+                        {
+                            poRasterData[j] = 0;
+                        }
 
-                            if (interp[k][j].empty == 0
-                                    && interp[k][j].filled == 0)
+                        for (k = 0; k < row_count; k++)
+                        {
+                            for (j = 0; j < GRID_SIZE_X; j++)
                             {
-                                poRasterData[index] = -9999.f;
-                            }
-                            else
-                            {
-                                switch (i)
+                                int index = k * GRID_SIZE_X + j;
+
+                                if (interp[k][j].empty == 0
+                                        && interp[k][j].filled == 0)
                                 {
-                                    case 0:
-                                        poRasterData[index] = interp[k][j].Zmin;
-                                        break;
+                                    poRasterData[index] = -9999.f;
+                                }
+                                else
+                                {
+                                    switch (i)
+                                    {
+                                        case 0:
+                                            poRasterData[index] =
+                                                    interp[k][j].Zmin;
+                                            break;
 
-                                    case 1:
-                                        poRasterData[index] = interp[k][j].Zmax;
-                                        break;
+                                        case 1:
+                                            poRasterData[index] =
+                                                    interp[k][j].Zmax;
+                                            break;
 
-                                    case 2:
-                                        poRasterData[index] =
-                                                interp[k][j].Zmean;
-                                        break;
+                                        case 2:
+                                            poRasterData[index] =
+                                                    interp[k][j].Zmean;
+                                            break;
 
-                                    case 3:
-                                        poRasterData[index] = interp[k][j].Zidw;
-                                        break;
+                                        case 3:
+                                            poRasterData[index] =
+                                                    interp[k][j].Zidw;
+                                            break;
 
-                                    case 4:
-                                        poRasterData[index] =
-                                                interp[k][j].count;
-                                        break;
+                                        case 4:
+                                            poRasterData[index] =
+                                                    interp[k][j].count;
+                                            break;
 
-                                    case 5:
-                                        poRasterData[index] = interp[k][j].Zstd;
-                                        break;
+                                        case 5:
+                                            poRasterData[index] =
+                                                    interp[k][j].Zstd;
+                                            break;
+                                    }
                                 }
                             }
                         }
+
+                        //printf("tifTemplateName %s, %u, %i, %i, %i\n", tifTemplateName, tifTemplateCount, row_stride, row_count, rank);
+                        if (rank == first_writer_rank)
+                        {
+                            MPI_File_write_at (tifFiles[i], 0,
+                                               tifTemplateContents,
+                                               tifTemplateCount, MPI_BYTE,
+                                               &status);
+                        }
+                        MPI_Offset offset = tifTemplateCount
+                                + ((rank - first_writer_rank) * row_stride
+                                        * GRID_SIZE_X * 4);
+                        MPI_File_write_at (tifFiles[i], offset, poRasterData,
+                                           row_count * GRID_SIZE_X * 4,
+                                           MPI_BYTE,
+                                           &status);
+
                     }
-
-
-                    //printf("tifTemplateName %s, %u, %i, %i, %i\n", tifTemplateName, tifTemplateCount, row_stride, row_count, rank);
-                    if(rank == first_writer_rank)
-                    {
-                        MPI_File_write_at(tifFiles[i], 0, tifTemplateContents, tifTemplateCount, MPI_BYTE, &status);
-                    }
-                    MPI_Offset offset = tifTemplateCount + ((rank-first_writer_rank) * row_stride * GRID_SIZE_X * 4);
-                    MPI_File_write_at(tifFiles[i], offset, poRasterData, row_count*GRID_SIZE_X*4, MPI_BYTE, &status);
-
                 }
+
             }
         }
     }
-
+    MPI_Barrier (MPI_COMM_WORLD);
     if (tifFiles != NULL)
     {
         for (i = 0; i < numTypes; i++)
@@ -2157,15 +2237,15 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
             if (tifFiles[i] != NULL)
                 MPI_File_close (&(tifFiles[i]));
         }
-
+        //unlink (tifTemplateName);
     }
-    MPI_Barrier(MPI_COMM_WORLD);
-    unlink (tifTemplateName);
 
+
+#endif // WORKING
 #endif // HAVE_GDAL
 
     // close files
-
+    MPI_Barrier(MPI_COMM_WORLD);
     if (arcFiles != NULL)
     {
         for (i = 0; i < numTypes; i++)
@@ -2188,6 +2268,31 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
 
     return 0;
 }
+
+unsigned long MpiInterp::parse_ulong(unsigned char *buffer)
+{
+   unsigned long result = 0;
+   unsigned long temp = 0;
+   temp = buffer[7];
+   result |= temp<<56;
+   temp = buffer[6];
+   result |= temp<<48;
+   temp = buffer[5];
+   result |= temp<<40;
+   temp = buffer[4];
+   result |= temp<<32;
+   temp = buffer[3];
+   result |= temp<<24;
+   temp = buffer[2];
+   result |= temp<<16;
+   temp = buffer[1];
+   result |= temp<<8;
+   temp = buffer[0];
+   result |= temp<<0;
+
+   return result;
+}
+
 
 
 unsigned int MpiInterp::parse_uint(unsigned char *buffer)

@@ -64,7 +64,7 @@ class P2G_DLL Interpolation
 {
 public:
     Interpolation(double x_dist, double y_dist, double radius,
-                  int _window_size, int _interpolation_mode, int _rank, int _process_count, int _reader_count, int _buffer_size, mpi_times *_timer);
+                  int _window_size, int _interpolation_mode, int _rank, int _process_count, int _reader_count, long _buffer_size, mpi_times *_timer);
     ~Interpolation();
 
     int init(char **inputNames, int inputNamesSize, int inputFormat);
@@ -113,7 +113,7 @@ private:
     int process_count;
     int rank;
     int reader_count;
-    int buffer_size;
+    long buffer_size;
     input_file_info *input_files;
     int input_file_count;
     mpi_times *timer;

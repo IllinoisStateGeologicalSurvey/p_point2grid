@@ -75,7 +75,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 Interpolation::Interpolation(double x_dist, double y_dist, double radius,
                              int _window_size, int _interpolation_mode = INTERP_AUTO,
-                             int _rank = 0, int _process_count = 1, int _reader_count = 1, int _buffer_size = 10000, mpi_times *_timer = NULL) : GRID_DIST_X (x_dist), GRID_DIST_Y(y_dist)
+                             int _rank = 0, int _process_count = 1, int _reader_count = 1, long _buffer_size = 10000, mpi_times *_timer = NULL) : GRID_DIST_X (x_dist), GRID_DIST_Y(y_dist)
 {
     rank = _rank;
     process_count = _process_count;
@@ -505,7 +505,7 @@ int Interpolation::interpolation(char *inputName,
                                 index++;
                             }
                             las.close();
-                            dbg(2, "*** rank %i, input file %s done with read and send ***\n", rank, input_files[i].name);
+                            dbg(2, "*** rank %i, input file %s done with read and send ***", rank, input_files[i].name);
                         }
                     }
 

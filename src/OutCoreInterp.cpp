@@ -1071,7 +1071,7 @@ int OutCoreInterp::outputFile(char *outputName, int outputFormat, unsigned int o
                     cerr << "        " << i << ": from " << (start/GRID_SIZE_X) << " to " << (end/GRID_SIZE_X) << endl;
 
                     float *poRasterData = new float[GRID_SIZE_X*GRID_SIZE_Y];
-                    for (int j = 0; j < GRID_SIZE_X*GRID_SIZE_Y; j++)
+                    for (j = 0; j < GRID_SIZE_X*GRID_SIZE_Y; j++)
                     {
                         poRasterData[j] = 0;
                     }
@@ -1281,6 +1281,7 @@ void OutCoreInterp::finalize()
 void OutCoreInterp::get_temp_file_name(char *fname, size_t fname_len) {
     const char *pfx = "grd";
     char *tname = NULL;
+    int tname_fd = -1;
     char tname_template[] = "/tmp/p2gXXXXXX";
 #ifdef _WIN32
     char dir[MAX_PATH];
@@ -1306,9 +1307,9 @@ void OutCoreInterp::get_temp_file_name(char *fname, size_t fname_len) {
     }
 #else
 
-    tname = mkstemp(tname_template);
+    tname_fd = mkstemp(tname_template);
     // tname = tempnam(NULL, pfx);
-    if (tname == NULL) {
+    if (tname_fd == -1) {
         throw std::logic_error("Could not create temporary file.");
     }
 #endif

@@ -67,7 +67,7 @@ public:
                  double _min_x, double _max_x,
                  double _min_y, double _max_y,
                  int _window_size,
-                 int _rank, int _process_count, int _reader_count, int _buffer_size,
+                 int _rank, int _process_count, int _reader_count, long _buffer_size,
                  mpi_times *_timer);
     ~MpiInterp();
 
@@ -90,7 +90,7 @@ public:
 private:
     int rank;
     int process_count;
-    int buffer_size;
+    long buffer_size;
     mpi_times *timer;
     MPI_Datatype mpi_grid_point_info;
     MPI_Datatype mpi_grid_point;
@@ -110,8 +110,8 @@ private:
     void updateGridPoint(int x, int y, double data_z, double distance);
     void printArray();
     int outputFile(char *outputName, int outputFormat, unsigned int outputType, double *adfGeoTransform, const char* wkt);
-    void flushMpiBuffers (MPI_File *arcFiles, MPI_File *gridFiles, int numTypes, int max_buffer_size);
-
+    void flushMpiBuffers (MPI_File *arcFiles, MPI_File *gridFiles, int numTypes, long max_buffer_size);
+    unsigned long parse_ulong(unsigned char *buffer);
     unsigned int parse_uint(unsigned char *buffer);
     unsigned short parse_ushort(unsigned char *buffer);
 
@@ -137,21 +137,21 @@ private:
 
     // each write process uses these to recv points from a reader
     grid_point_info *point_buffer;
-    int point_buffer_count;
+    long point_buffer_count;
     // each read porocess uses these to send points to a specific writer
     grid_point_info **point_buffers;
-    int *point_buffer_counts;
-    int mpi_point_buffer_count; // holds the number of points to be allocated in the point buffer
-                                // based on number of writers and assumed memory availability of 500 Meg/core
-                                // calculated now in init, tbd, make configurable...
+    long *point_buffer_counts;
+    long mpi_point_buffer_count; // holds the number of points to be allocated in the point buffer
+                                 // based on number of writers and assumed memory availability of 500 Meg/core
+                                 // calculated now in init, tbd, make configurable...
 
 
     // writing
-    int mpi_buffer_size;
+    long mpi_buffer_size;
 
     MPI_Offset *arc_file_mpi_offset;
     char** arc_file_mpi_buffer;   // each element is a buffer for mpi writes of mpi_buffer_size
-    int *arc_file_mpi_count;      // each element is the current data size of cooresponding element of arc_file_mpi_buffers
+    long *arc_file_mpi_count;      // each element is the current data size of cooresponding element of arc_file_mpi_buffers
     long *arc_file_mpi_size;        // each element is the total size of data that will be written by a worker
                                             // used to set write offsets calculated by first sprintf loop
     long **arc_file_mpi_sizes;      // used in an Allgather to calculate the write offset of THIS process
@@ -159,14 +159,14 @@ private:
 
     MPI_Offset *grid_file_mpi_offset;
     char** grid_file_mpi_buffer;   // each element is a buffer for mpi writes of mpi_buffer_size
-    int *grid_file_mpi_count;      // each element is the current data size of cooresponding element of arc_file_mpi_buffers
-    unsigned int *grid_file_mpi_size;        // each element is the total size of data that will be written by a worker
+    long *grid_file_mpi_count;      // each element is the current data size of cooresponding element of arc_file_mpi_buffers
+    long *grid_file_mpi_size;        // each element is the total size of data that will be written by a worker
                                             // used to set write offsets calculated by first sprintf loop
-    unsigned int **grid_file_mpi_sizes;      // used in an Allgather to calculate the write offset of THIS process
+    long **grid_file_mpi_sizes;      // used in an Allgather to calculate the write offset of THIS process
 
     MPI_Offset *tif_file_mpi_offset;
-    unsigned int *tif_file_mpi_size;        // each element is the total size of data that will be written by a worker
-    unsigned int **tif_file_mpi_sizes;      // used in an Allgather to calculate the write offset of THIS process
+    long *tif_file_mpi_size;        // each element is the total size of data that will be written by a worker
+    long **tif_file_mpi_sizes;      // used in an Allgather to calculate the write offset of THIS process
 
 
 };

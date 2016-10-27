@@ -86,7 +86,7 @@ int main(int argc, char **argv)
     int rank = 0;
     int process_count = 1;
     int reader_count = 1;
-    int buffer_size = 10000;
+    long buffer_size = 10000;
     int is_mpi = 0;
     mpi_times *timer = NULL;
     // end, mpi variables
@@ -132,7 +132,7 @@ int main(int argc, char **argv)
      "'outcore' stores working data on the filesystem, 'parallel' uses number of processes specified by mpirun -n\n"
      "'auto' (default) guesses based on the size of the data file")
      ("reader_count,c", po::value<int>(), "when interpolation mode is 'parallel', arg is number of reader processes, default is 1")
-     ("buffer_size,b", po::value<int>(), "when interpolation mode is 'parallel', arg is write buffer size in bytes, default is 10000 bytes")
+     ("buffer_size,b", po::value<long>(), "when interpolation mode is 'parallel', arg is write buffer size in bytes, default is 10000 bytes")
      ("mpi_times,t", "time mpi run");
 
     df.add_options()
@@ -338,7 +338,7 @@ int main(int argc, char **argv)
                 for(i=strlen(line)-1; i>= 0; i--){
                     if(!isspace(line[i])) break;
                 }
-                line[i+1] = NULL;
+                line[i+1] = 0;
                 inputNames[inputNamesSize-1] = line;
                 line = NULL;
             }
@@ -393,7 +393,7 @@ int main(int argc, char **argv)
             reader_count = vm["reader_count"].as<int>();
         }
         if(vm.count("buffer_size")) {
-            buffer_size = vm["buffer_size"].as<int>();
+            buffer_size = vm["buffer_size"].as<long>();
         }
         if(vm.count("mpi_times")) {
             timer = (mpi_times *)malloc(sizeof(mpi_times));
@@ -530,14 +530,15 @@ int main(int argc, char **argv)
 
     t1 = clock();
 
-
-    MPI_Barrier (MPI_COMM_WORLD);
+    if (interpolation_mode == INTERP_MPI){
+        MPI_Barrier (MPI_COMM_WORLD);
+    }
 
     if (rank == 0 && !timer)
     {
         printf ("DEM generation + Output time: %10.2f\n",
                 (double) (t1 - t0) / CLOCKS_PER_SEC);
-        printf ("# of data: %d\n", ip->getDataCount ());
+        printf ("# of data: %lu\n", ip->getDataCount ());
         printf ("dimension: %d x %d\n", ip->getGridSizeX (),
                 ip->getGridSizeY ());
     }
