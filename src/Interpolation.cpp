@@ -255,12 +255,12 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat)
                 if (input_files[i].peek_rank == -1)
                 {
                     MPI_Recv (input_files[i].name, strlen(input_files[i].name)+1, MPI_CHAR, i % reader_count, 1, MPI_COMM_WORLD, NULL);
-                    MPI_Recv (&(input_files[i].min_x), 1, MPI_DOUBLE, i % reader_count, 2, MPI_COMM_WORLD, NULL);
-                    MPI_Recv (&(input_files[i].min_y), 1, MPI_DOUBLE, i % reader_count, 3, MPI_COMM_WORLD, NULL);
-                    MPI_Recv (&(input_files[i].max_x), 1, MPI_DOUBLE, i % reader_count, 4, MPI_COMM_WORLD, NULL);
-                    MPI_Recv (&(input_files[i].max_y), 1, MPI_DOUBLE, i % reader_count, 5, MPI_COMM_WORLD, NULL);
-                    MPI_Recv (&(input_files[i].point_count), 1, MPI_LONG, i % reader_count, 6, MPI_COMM_WORLD, NULL);
-                    MPI_Recv (&(input_files[i].peek_rank), 1, MPI_INT, i % reader_count, 7, MPI_COMM_WORLD, NULL);
+                    MPI_Recv (&(input_files[i].min_x), 1, MPI_DOUBLE, i % reader_count, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    MPI_Recv (&(input_files[i].min_y), 1, MPI_DOUBLE, i % reader_count, 3, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    MPI_Recv (&(input_files[i].max_x), 1, MPI_DOUBLE, i % reader_count, 4, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    MPI_Recv (&(input_files[i].max_y), 1, MPI_DOUBLE, i % reader_count, 5, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    MPI_Recv (&(input_files[i].point_count), 1, MPI_LONG, i % reader_count, 6, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    MPI_Recv (&(input_files[i].peek_rank), 1, MPI_INT, i % reader_count, 7, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 }
             }
             min_x = min_y = DBL_MAX;
@@ -299,12 +299,12 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat)
         }
     }
     if(rank>=reader_count){
-        MPI_Recv(&GRID_SIZE_X, 1, MPI_UNSIGNED, 0, 1, MPI_COMM_WORLD, NULL);
-        MPI_Recv(&GRID_SIZE_Y, 1, MPI_UNSIGNED, 0, 1, MPI_COMM_WORLD, NULL);
-        MPI_Recv(&min_x, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, NULL);
-        MPI_Recv(&min_y, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, NULL);
-        MPI_Recv(&max_x, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, NULL);
-        MPI_Recv(&max_y, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, NULL);
+        MPI_Recv(&GRID_SIZE_X, 1, MPI_UNSIGNED, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(&GRID_SIZE_Y, 1, MPI_UNSIGNED, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(&min_x, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(&min_y, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(&max_x, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(&max_y, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
 
     //printf("GRID_SIZE_x %i, grid_size y %i, rank %i\n", GRID_SIZE_X, GRID_SIZE_Y, rank);
