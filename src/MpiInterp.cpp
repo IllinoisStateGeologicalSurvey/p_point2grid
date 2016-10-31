@@ -1900,10 +1900,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
 
         strcpy (tifTemplateName, outputName);
         strcat (tifTemplateName, ".template.big.tif");
-        dbg(2, "rank %i, outputName %s, tifTemplateName %s", rank, outputName, tifTemplateName);
+
 
         unsigned char *tifTemplateContents;
-        unsigned int tifTemplateCount;
+        unsigned long  tifTemplateCount;
 
         tifFiles = (MPI_File *) malloc (sizeof(MPI_File) * numTypes);
         tif_file_mpi_offset = (MPI_Offset *) malloc (
@@ -1934,7 +1934,16 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
         }
 
         // create tifTemplate containing tiff header and directory, correct the strip offsets and sizes, all with first writer process
+        // **** BIGTIFF, and including a GeoTransform, are hardcoded below for now ****
         int bigtiff = 1;
+        double transform[6];
+        transform[0] = min_x;
+        transform[1] = GRID_DIST_X;
+        transform[2] = 0;
+        transform[3] = max_y;
+        transform[4] = 0;
+        transform[5] = -GRID_DIST_Y;
+
         if (rank == first_writer_rank)
         {
             GDALAllRegister ();
@@ -1958,6 +1967,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                                                       1, GDT_Float32, options);
                 assert(gdal != NULL);
 
+                gdal->SetGeoTransform (transform);
                 if (adfGeoTransform)
                     gdal->SetGeoTransform (adfGeoTransform);
                 if (wkt)
@@ -1977,6 +1987,16 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 unsigned long tiff_version = parse_ushort (b);
                 dbg(3, "tiff_version = %li", tiff_version);
 
+                unsigned long bytes_per_row;
+                unsigned long rows_per_strip;
+                unsigned long strip_count;
+                unsigned long strip_offsets;
+                unsigned long strip_byte_counts;
+                unsigned long bytes_per_strip;
+                unsigned long bytes_last_strip;
+
+
+
                 if (tiff_version == 42) // Regular TIFF
                 {
                     // read directory offset
@@ -1992,13 +2012,6 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
 
                     dbg(3,
                                                                    "directory_offset %li, entry_cnt %li", directory_offset, entry_cnt);
-                    unsigned long bytes_per_row;
-                    unsigned long rows_per_strip;
-                    unsigned long strip_count;
-                    unsigned long strip_offsets;
-                    unsigned long strip_byte_counts;
-                    unsigned long bytes_per_strip;
-                    unsigned long bytes_last_strip;
 
                     for (i = 0; i < entry_cnt; i++)
                     {
@@ -2029,8 +2042,8 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
 
                     }
                 }
-                else if (tiff_version == 43)
-                { // BIGTIFF
+                else
+                { // tiff_version == 43, BIGTIFF
 
                     // read directory offset
                     lseek (fd, 8, SEEK_SET);
@@ -2043,13 +2056,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     unsigned long entry_cnt = parse_ulong (b);
                     dbg(3,
                                                 "directory_offset %li, entry_cnt %li", directory_offset, entry_cnt);
-                    unsigned long bytes_per_row;
-                    unsigned long rows_per_strip;
-                    unsigned long strip_count;
-                    unsigned long strip_offsets;
-                    unsigned long strip_byte_counts;
-                    unsigned long bytes_per_strip;
-                    unsigned long bytes_last_strip;
+
 
                     for (i = 0; i < entry_cnt; i++)
                     {
@@ -2084,13 +2091,10 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
 
                     }
                 }
-            }
-        }
-    }
 
 
+                unsigned long integer_bytes = (tiff_version == 42)?4:8;
 
-#ifdef WORKING
                 bytes_per_row = GRID_SIZE_X * 4;
                 bytes_per_strip = bytes_per_row * rows_per_strip;
                 bytes_last_strip = bytes_per_strip;
@@ -2100,26 +2104,26 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                             * bytes_per_row;
                 }
 
-                printf("strip offset count and offset %u %u\n", strip_count, strip_offsets);
-                printf("strip byte counts offset %u\n", strip_byte_counts);
-                printf("rows per strip  %u\n", rows_per_strip);
+                printf("strip offset count and offset %lu %lu\n", strip_count, strip_offsets);
+                printf("strip byte counts offset %lu\n", strip_byte_counts);
+                printf("rows per strip  %lu\n", rows_per_strip);
 
                 // now update the strip offsets and strip byte counts
                 unsigned long cur_write_offset = st_size;
                 for (i = 0; i < strip_count; i++)
                 {
                     //write cur_strip
-                    lseek (fd, strip_offsets + (4 * i), SEEK_SET);
-                    write (fd, &cur_write_offset, 4);
+                    lseek (fd, strip_offsets + (integer_bytes * i), SEEK_SET);
+                    write (fd, &cur_write_offset, integer_bytes);
                     cur_write_offset += bytes_per_strip;
-                    lseek (fd, strip_byte_counts + (4 * i), SEEK_SET);
+                    lseek (fd, strip_byte_counts + (integer_bytes * i), SEEK_SET);
                     if (i != strip_count - 1)
                     {
-                        write (fd, &bytes_per_strip, 4);
+                        write (fd, &bytes_per_strip, integer_bytes);
                     }
                     else
                     {
-                        write (fd, &bytes_last_strip, 4);
+                        write (fd, &bytes_last_strip, integer_bytes);
                     }
                 }
 
@@ -2127,16 +2131,13 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 read (fd, b, st_size);
                 // store the contents for later write by first writer process only
                 tifTemplateContents = b;
+                tifTemplateCount = st_size;
                 close (fd);
             }
         }
 
-        MPI_Barrier (MPI_COMM_WORLD);
-        struct stat stat_buf;
-        stat (tifTemplateName, &stat_buf);
-        off_t st_size = stat_buf.st_size;
-        // needed by all writers to calculate write offset
-        tifTemplateCount = st_size;
+        MPI_Bcast (&tifTemplateCount, 1, MPI_UNSIGNED_LONG, first_writer_rank, MPI_COMM_WORLD);
+
         float *poRasterData = NULL;
         int row_count = w_row_end_index - w_row_start_index + 1;
 
@@ -2157,12 +2158,12 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         {
                             poRasterData[j] = 0;
                         }
-
-                        for (k = 0; k < row_count; k++)
+                        // write rows in reverse order for tif output
+                        for (k = row_count-1; k >= 0; k--)
                         {
                             for (j = 0; j < GRID_SIZE_X; j++)
                             {
-                                int index = k * GRID_SIZE_X + j;
+                                int index = (row_count-1 - k) * (GRID_SIZE_X) + j;
 
                                 if (interp[k][j].empty == 0
                                         && interp[k][j].filled == 0)
@@ -2215,11 +2216,28 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                                                tifTemplateCount, MPI_BYTE,
                                                &status);
                         }
-                        MPI_Offset offset = tifTemplateCount
-                                + ((rank - first_writer_rank) * row_stride
-                                        * GRID_SIZE_X * 4);
+                        //MPI_Offset offset = tifTemplateCount
+                        //        + ((rank - first_writer_rank) * row_stride
+                        //                * GRID_SIZE_X * 4);
+
+                        int last_writer_rank = first_writer_rank + writer_count - 1;
+                        MPI_Offset offset = 0;
+                        if(rank==last_writer_rank)
+                        {
+                            offset = tifTemplateCount;
+                        }
+                        else
+                        {
+                            // this accounts for the tif being written upside down, and uses the fact that all writer ranks except the last have row_count == row_stride
+                            offset = ((unsigned long)(GRID_SIZE_Y - ((rank-first_writer_rank + 1)*row_stride) ))  *   ((unsigned long)GRID_SIZE_X) * 4 + tifTemplateCount;
+                        }
+
+                        //MPI_Offset offset = tifTemplateCount
+                        //                                + ((rank - first_writer_rank) * row_stride
+                        //                                        * GRID_SIZE_X * 4);
+
                         MPI_File_write_at (tifFiles[i], offset, poRasterData,
-                                           row_count * GRID_SIZE_X * 4,
+                                           (row_count * GRID_SIZE_X * 4),
                                            MPI_BYTE,
                                            &status);
 
@@ -2241,7 +2259,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
     }
 
 
-#endif // WORKING
+
 #endif // HAVE_GDAL
 
     // close files
