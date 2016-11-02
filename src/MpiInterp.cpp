@@ -63,8 +63,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <assert.h>
 
 #ifdef HAVE_GDAL
-#include "gdal_priv.h"
-#include "ogr_spatialref.h"
+//#include "gdal_priv.h"
+//#include "ogr_spatialref.h"
 #include <ogr_api.h>
 #include <ogr_spatialref.h>
 #include <gdal.h>
@@ -109,6 +109,9 @@ MpiInterp::MpiInterp(double dist_x, double dist_y,
     max_y = _max_y;
 
     window_size = _window_size;
+
+    bigtiff = 1;
+    epsg_code = 0;
 
     const int nitems=5;
     int          blocklengths[5] = {1,1,1,1,1};
@@ -1899,7 +1902,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
         char tifTemplateName[1024];
 
         strcpy (tifTemplateName, outputName);
-        strcat (tifTemplateName, ".template.big.tif");
+        strcat (tifTemplateName, ".template.tif");
 
 
         unsigned char *tifTemplateContents;
@@ -1934,15 +1937,6 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
         }
 
         // create tifTemplate containing tiff header and directory, correct the strip offsets and sizes, all with first writer process
-        // **** BIGTIFF, and including a GeoTransform, are hardcoded below for now ****
-        int bigtiff = 1;
-        double transform[6];
-        transform[0] = min_x;
-        transform[1] = GRID_DIST_X;
-        transform[2] = 0;
-        transform[3] = max_y;
-        transform[4] = 0;
-        transform[5] = -GRID_DIST_Y;
 
         if (rank == first_writer_rank)
         {
@@ -1956,31 +1950,59 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
             {
                 char **options = NULL;
                 options = CSLSetNameValue (options, "SPARSE_OK", "YES");
-
+                // set whether bigtiff
                 if (bigtiff)
                 {
                     options = CSLSetNameValue (options, "BIGTIFF", "YES");
                 }
-
                 GDALDataset *gdal = tpDriver->Create (tifTemplateName,
                                                       GRID_SIZE_X, GRID_SIZE_Y,
                                                       1, GDT_Float32, options);
                 assert(gdal != NULL);
 
+
+                // the following geo transform is valid for a "bottom first" row format for tif output
+                // double transform[6];
+                // transform[0] = min_x;
+                // transform[1] = GRID_DIST_X;
+                // transform[2] = 0;
+                // transform[3] = min_y;
+                // transform[4] = 0;
+                // transform[5] = GRID_DIST_Y;
+
+                // set the geo transform for "top first" format for tif output
+                double transform[6];
+                transform[0] = min_x;
+                transform[1] = GRID_DIST_X;
+                transform[2] = 0;
+                transform[3] = min_y + GRID_SIZE_Y;
+                transform[4] = 0;
+                transform[5] = -GRID_DIST_Y;
                 gdal->SetGeoTransform (transform);
-                if (adfGeoTransform)
-                    gdal->SetGeoTransform (adfGeoTransform);
-                if (wkt)
-                    gdal->SetProjection (wkt);
+                // set the epsg projection wkt
+                if (epsg_code)
+                {
+                    OGRSpatialReference *ogr_sr = new OGRSpatialReference();
+                    ogr_sr->importFromEPSG (epsg_code);
+                    char *ogr_wkt = NULL;
+                    ogr_sr->exportToWkt (&ogr_wkt);
+                    gdal->SetProjection (ogr_wkt);
+                    dbg(3, "%s\n", ogr_wkt);
+                }
+
+                // set raster band and no data value
                 GDALRasterBand *tBand = gdal->GetRasterBand (1);
                 tBand->SetNoDataValue (-9999.f);
                 GDALClose ((GDALDatasetH) gdal);
 
+                // get the size of the template and allocate space for its contents
                 struct stat stat_buf;
                 stat (tifTemplateName, &stat_buf);
                 off_t st_size = stat_buf.st_size;
                 unsigned char *b = (unsigned char *) malloc (
                         st_size * (sizeof(unsigned char)));
+
+                // determine tiff_version, read the template and update offsets based tiff_version
                 int fd = open (tifTemplateName, O_RDWR);
                 lseek (fd, 2, SEEK_SET);
                 read (fd, b, 2);
@@ -1995,8 +2017,6 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 unsigned long bytes_per_strip;
                 unsigned long bytes_last_strip;
 
-
-
                 if (tiff_version == 42) // Regular TIFF
                 {
                     // read directory offset
@@ -2009,9 +2029,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     read (fd, b, 2);
                     unsigned long entry_cnt = parse_ushort (b);
 
-
-                    dbg(3,
-                                                                   "directory_offset %li, entry_cnt %li", directory_offset, entry_cnt);
+                    dbg(3, "directory_offset %li, entry_cnt %li", directory_offset, entry_cnt);
 
                     for (i = 0; i < entry_cnt; i++)
                     {
@@ -2023,7 +2041,6 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         dbg(3,
                             "tag_id %li, data_type %li, data_count %li, data_offset %li",
                             tag_id, data_type, data_count, data_offset);
-
 
                         if (tag_id == 273) // TIFFTAG_STRIPOFFSETS
                         {
@@ -2054,9 +2071,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     lseek (fd, directory_offset, SEEK_SET);
                     read (fd, b, 8);
                     unsigned long entry_cnt = parse_ulong (b);
-                    dbg(3,
-                                                "directory_offset %li, entry_cnt %li", directory_offset, entry_cnt);
-
+                    dbg(3, "directory_offset %li, entry_cnt %li", directory_offset, entry_cnt);
 
                     for (i = 0; i < entry_cnt; i++)
                     {
@@ -2108,7 +2123,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 printf("strip byte counts offset %lu\n", strip_byte_counts);
                 printf("rows per strip  %lu\n", rows_per_strip);
 
-                // now update the strip offsets and strip byte counts
+                // now finally update the strip offsets and strip byte counts
                 unsigned long cur_write_offset = st_size;
                 for (i = 0; i < strip_count; i++)
                 {
@@ -2126,18 +2141,18 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         write (fd, &bytes_last_strip, integer_bytes);
                     }
                 }
-
+                // seek back to beginning and store the complete template contents for later write by first writer process only
                 lseek (fd, 0, SEEK_SET);
                 read (fd, b, st_size);
-                // store the contents for later write by first writer process only
                 tifTemplateContents = b;
                 tifTemplateCount = st_size;
                 close (fd);
             }
         }
-
+        // all writers need the size of the template to add to the starting offset of their contents
         MPI_Bcast (&tifTemplateCount, 1, MPI_UNSIGNED_LONG, first_writer_rank, MPI_COMM_WORLD);
 
+        // allocate and fill the writer's buffer with each writer's set of raster rows
         float *poRasterData = NULL;
         int row_count = w_row_end_index - w_row_start_index + 1;
 
@@ -2158,11 +2173,12 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         {
                             poRasterData[j] = 0;
                         }
-                        // write rows in reverse order for tif output
+                        // write rows in "top first" format for tif output
                         for (k = row_count-1; k >= 0; k--)
                         {
                             for (j = 0; j < GRID_SIZE_X; j++)
                             {
+                                // set index for "top first" format for tif output
                                 int index = (row_count-1 - k) * (GRID_SIZE_X) + j;
 
                                 if (interp[k][j].empty == 0
@@ -2207,8 +2223,8 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                                 }
                             }
                         }
-
-                        //printf("tifTemplateName %s, %u, %i, %i, %i\n", tifTemplateName, tifTemplateCount, row_stride, row_count, rank);
+                        // write the template header and all writer's buffers
+                        //dbg(5, "tifTemplateName %s, %u, %i, %i, %i\n", tifTemplateName, tifTemplateCount, row_stride, row_count, rank);
                         if (rank == first_writer_rank)
                         {
                             MPI_File_write_at (tifFiles[i], 0,
@@ -2216,10 +2232,12 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                                                tifTemplateCount, MPI_BYTE,
                                                &status);
                         }
-                        //MPI_Offset offset = tifTemplateCount
+                        // The following "bottom first" rows was replaced with the "top first" section below
+                        // MPI_Offset offset = tifTemplateCount
                         //        + ((rank - first_writer_rank) * row_stride
                         //                * GRID_SIZE_X * 4);
 
+                        // write the tiff with "top first rows"
                         int last_writer_rank = first_writer_rank + writer_count - 1;
                         MPI_Offset offset = 0;
                         if(rank==last_writer_rank)
@@ -2231,10 +2249,6 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                             // this accounts for the tif being written upside down, and uses the fact that all writer ranks except the last have row_count == row_stride
                             offset = ((unsigned long)(GRID_SIZE_Y - ((rank-first_writer_rank + 1)*row_stride) ))  *   ((unsigned long)GRID_SIZE_X) * 4 + tifTemplateCount;
                         }
-
-                        //MPI_Offset offset = tifTemplateCount
-                        //                                + ((rank - first_writer_rank) * row_stride
-                        //                                        * GRID_SIZE_X * 4);
 
                         MPI_File_write_at (tifFiles[i], offset, poRasterData,
                                            (row_count * GRID_SIZE_X * 4),

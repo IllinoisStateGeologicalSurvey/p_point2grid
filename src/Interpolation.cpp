@@ -103,7 +103,7 @@ Interpolation::~Interpolation()
     delete interp;
 }
 
-int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat)
+int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, int bigtiff, int epsg_code)
 {
 
 
@@ -332,10 +332,8 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat)
         cerr << "Interpolation uses out-of-core algorithm" << endl;
 
     } else if (interpolation_mode == INTERP_MPI){
-        // printf("before constructor rank %i  pc %i rc %i \n", rank, process_count, reader_count);
 
         interp = new MpiInterp(GRID_DIST_X, GRID_DIST_Y, GRID_SIZE_X, GRID_SIZE_Y, radius_sqr, min_x, max_x, min_y, max_y, window_size, rank, process_count, reader_count, buffer_size, timer);
-
 
     } else {
         cerr << "Using incore interp code" << endl;
@@ -344,14 +342,14 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat)
 
         cerr << "Interpolation uses in-core algorithm" << endl;
     }
-    // printf("before init rank %i\n", rank);
+
+    interp->set_bigtiff(bigtiff);
+    interp->set_epsg_code(epsg_code);
     if(interp->init() < 0)
     {
         cerr << "inter->init() error" << endl;
         return -1;
     }
-    // printf("after init rank %i\n", rank);
-    //cerr << "Interpolation::init() done successfully" << endl;
 
     return 0;
 }

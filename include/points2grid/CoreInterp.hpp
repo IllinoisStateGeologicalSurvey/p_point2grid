@@ -69,7 +69,34 @@ public:
     virtual int* getWriters(){return 0;};
     virtual int getReaderCount(){return 1;};
     virtual int getWriterCount(){return 1;};
-    virtual int* getReadDone(){return 0;};
+    virtual int*
+    getReadDone ()
+    {
+        return 0;
+    }
+    int
+    get_epsg_code () const
+    {
+        return epsg_code;
+    }
+
+    void
+    set_epsg_code (int epsgCode)
+    {
+        epsg_code = epsgCode;
+    }
+
+    int
+    get_bigtiff () const
+    {
+        return bigtiff;
+    }
+
+    void
+    set_bigtiff (int bigtiff)
+    {
+        this->bigtiff = bigtiff;
+    }
 
     // mpi adds - finish
 protected:
@@ -87,5 +114,11 @@ protected:
 
     // for DEM filling
     int window_size;
+
+    // for file output
+    int bigtiff;
+    int epsg_code;
+
+
 };
 

@@ -67,7 +67,7 @@ public:
                   int _window_size, int _interpolation_mode, int _rank, int _process_count, int _reader_count, long _buffer_size, mpi_times *_timer);
     ~Interpolation();
 
-    int init(char **inputNames, int inputNamesSize, int inputFormat);
+    int init(char **inputNames, int inputNamesSize, int inputFormat, int bigtiff, int epsg_code);
     int interpolation(char *inputName, char *outputName, int inputFormat,
                       int outputFormat, unsigned int type);
     unsigned long getDataCount();
@@ -94,6 +94,7 @@ public:
     // as a rule of thumb, memory requirement = MEM_LIMIT*55 bytes
     static const unsigned int MEM_LIMIT = 200000000;
     CoreInterp *getInterp(){return interp;}
+
 
 private:
     double min_x;

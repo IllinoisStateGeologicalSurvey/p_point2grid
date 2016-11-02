@@ -59,8 +59,12 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #ifdef HAVE_GDAL
 #include "gdal_priv.h"
+#include "ogr_api.h"
 #include "ogr_spatialref.h"
+
 #endif
+
+#include <points2grid/debug.hpp>
 
 InCoreInterp::InCoreInterp(double dist_x, double dist_y,
                            int size_x, int size_y,
@@ -752,6 +756,29 @@ int InCoreInterp::outputFile(char *outputName, int outputFormat, unsigned int ou
                             cerr << "File open error: " << gdalFileName << endl;
                             return -1;
                         } else {
+                            double transform[6];
+                            transform[0] = min_x;
+                            transform[1] = GRID_DIST_X;
+                            transform[2] = 0;
+                            transform[3] = min_y;
+                            transform[4] = 0;
+                            transform[5] = GRID_DIST_Y;
+                            gdalFiles[i]->SetGeoTransform (transform);
+                            // set the epsg projection wkt
+                            if (epsg_code)
+                            {
+                                OGRSpatialReference *ogr_sr =
+                                        new OGRSpatialReference ();
+                                ogr_sr->importFromEPSG (epsg_code);
+                                char *ogr_wkt = NULL;
+                                ogr_sr->exportToWkt (&ogr_wkt);
+                                gdalFiles[i]->SetProjection (ogr_wkt);
+                                dbg (3, "%s\n", ogr_wkt);
+                            }
+
+
+
+
                             if (adfGeoTransform)
                                 gdalFiles[i]->SetGeoTransform(adfGeoTransform);
                             if (wkt)

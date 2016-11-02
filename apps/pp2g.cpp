@@ -99,6 +99,8 @@ int main(int argc, char **argv)
     char inputName[1024] = {0};
     char inputURL[2048] = {0};
     char outputName[1024] = {0};
+    int bigtiff = 1;
+    int epsg_code = 0;
 
     int input_format = INPUT_LAS;
     int interpolation_mode = INTERP_AUTO;
@@ -114,6 +116,7 @@ int main(int argc, char **argv)
        df("Data file(s)"),
        ot("Output Type"),
        res("Resolution"),
+       too("TIFF Output Options"),
        nf("Null Filling"),
        desc;
 
@@ -156,6 +159,10 @@ int main(int argc, char **argv)
     ("den", "the density values are stored")
     ("all", "all the values are stored (default)");
 
+    too.add_options()
+    ("epsg", po::value<int>(), "epsg projection code, integer value")
+    ("bigtiff", po::value<int>(), "bigtiff(default) format?, 1 for yes, 0 for no");
+
     res.add_options()
     ("resolution", po::value<float>(), "The resolution is set to the specified value. Use square grids.\n"
      "If no resolution options are specified, a 6 unit square grid is used")
@@ -166,7 +173,7 @@ int main(int argc, char **argv)
     ("fill", "fills nulls in the DEM. Default window size is 3.")
     ("fill_window_size", po::value<int>(), "The fill window is set to value. Permissible values are 3, 5 and 7.");
 
-    desc.add(general).add(df).add(ot).add(res).add(nf);
+    desc.add(general).add(df).add(ot).add(too).add(res).add(nf);
 
     po::variables_map vm;
 
@@ -256,6 +263,25 @@ int main(int argc, char **argv)
 
         if(vm.count("all")) {
             type = OUTPUT_TYPE_ALL;
+        }
+        if (vm.count ("epsg"))
+        {
+            epsg_code = vm["epsg"].as<int> ();
+            if (searchRadius == sqrt (2.0) * 6.0)
+                searchRadius = (double) sqrt (2.0) * GRID_DIST_X;
+
+            if (epsg_code < 0)
+            {
+                throw std::logic_error ("epsg code must be greater than 0");
+            }
+        }
+        if (vm.count ("bigtiff"))
+        {
+            bigtiff = vm["bigtiff"].as<int> ();
+            if (bigtiff != 1 && bigtiff != 0)
+            {
+                throw std::logic_error ("bigtiff must be 1 (bigtiff) or 0 (regular tiff)");
+            }
         }
 
         if(vm.count("fill")) {
@@ -502,12 +528,14 @@ int main(int argc, char **argv)
         if(rank == reader_count)printf("Allocating memory...\n");
         timer->init_start = time(NULL);
     }
+
+
+
     Interpolation *ip = new Interpolation(GRID_DIST_X, GRID_DIST_Y, searchRadius,
                                           window_size, interpolation_mode, rank, process_count, reader_count, buffer_size, timer);
 
 
-
-    if(ip->init(inputNames, inputNamesSize, input_format) < 0)
+    if(ip->init(inputNames, inputNamesSize, input_format, bigtiff, epsg_code) < 0)
     {
         fprintf(stderr, "Interpolation::init() error\n");
         return -1;
