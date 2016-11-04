@@ -101,6 +101,7 @@ int main(int argc, char **argv)
     char outputName[1024] = {0};
     int bigtiff = 1;
     int epsg_code = 0;
+    double *bbox = NULL;
 
     int input_format = INPUT_LAS;
     int interpolation_mode = INTERP_AUTO;
@@ -129,6 +130,7 @@ int main(int argc, char **argv)
      "'grid' for Ascii GRID format,\n"
      "'tif' for GDAL GeoTIFF format,\n"
      "the default value is --all")
+    ("output_bbox", po::value< std::vector<double> >()->multitoken(), "min X min Y max X max Y")
     ("input_format", po::value<std::string>(), "'ascii' expects input point cloud in ASCII format\n"
      "'las' expects input point cloud in LAS format (default)")
     ("interpolation_mode,m", po::value<std::string>()->default_value("auto"), "'incore' stores working data in memory\n"
@@ -207,6 +209,28 @@ int main(int argc, char **argv)
                 throw std::logic_error("'" + of + "' is not a recognized output_format");
             }
         }
+
+        if (vm.count ("output_bbox"))
+        {
+            if(vm["output_bbox"].as<std::vector<double> > ().size () != 4)
+            {
+                throw std::logic_error ("bbox must contain 4 integer or floating point values");
+            }
+
+            bbox = (double *) malloc (4 * sizeof(double));
+
+            for (unsigned i = 0; i < 4; i++)
+            {
+                bbox[i] = (vm["output_bbox"].as<std::vector<double> >())[i];
+            }
+            if(bbox[0] >= bbox[2] || bbox[1]>=bbox[3])
+            {
+                throw std::logic_error ("min X must smaller than max X, and min Y must be smaller than max Y");
+            }
+
+            //dbg(3, "min_x %lf, min_y %lf, max_x %lf, max_y %lf", bbox[0], bbox[1], bbox[2], bbox[3]);
+        }
+
         // resolution
         if(vm.count("resolution")) {
             float res = vm["resolution"].as<float>();
@@ -376,10 +400,6 @@ int main(int argc, char **argv)
             }
         }
 
-        //for(int i= 0; i< inputNamesSize; i++){
-        //    printf("%s %i\n", inputNames[i], i);
-        //}
-
 #endif
 
         if (!vm.count("output_file_name")) {
@@ -535,7 +555,7 @@ int main(int argc, char **argv)
                                           window_size, interpolation_mode, rank, process_count, reader_count, buffer_size, timer);
 
 
-    if(ip->init(inputNames, inputNamesSize, input_format, bigtiff, epsg_code) < 0)
+    if(ip->init(inputNames, inputNamesSize, input_format, bigtiff, epsg_code, bbox) < 0)
     {
         fprintf(stderr, "Interpolation::init() error\n");
         return -1;
@@ -579,24 +599,20 @@ int main(int argc, char **argv)
             timer->end = time(NULL);
 
         if (rank == reader_count)
-                {
-                    printf("Finished, first writer process times...\n");
-                    printf("Total time %li seconds.\n", timer->end - timer->start);
+        {
+            printf ("Finished, process times...\n");
+            printf ("Total time %li seconds.\n", timer->end - timer->start);
 
-                    printf ("  Allocation: %li seconds.\n",
-                            timer->init_end - timer->init_start);
-                    printf ("  Read and send: %li seconds.\n",
-                            timer->interp_end - timer->interp_start);
-                    printf ("  Process cells: %li seconds.\n",
-                            timer->process_end - timer->process_start);
-                    printf ("  Write cells: %li seconds.\n",
-                            timer->output_end -   timer->output_start);
+            printf ("  Allocation: %li seconds.\n",
+                    timer->init_end - timer->init_start);
+            printf ("  Read and send: %li seconds.\n",
+                    timer->interp_end - timer->interp_start);
+            printf ("  Process cells: %li seconds.\n",
+                    timer->process_end - timer->process_start);
+            printf ("  Write cells: %li seconds.\n",
+                    timer->output_end - timer->output_start);
 
-       }
-
-
-
-
+        }
 
     }
 

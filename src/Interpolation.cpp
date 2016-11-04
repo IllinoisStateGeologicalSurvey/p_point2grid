@@ -103,7 +103,7 @@ Interpolation::~Interpolation()
     delete interp;
 }
 
-int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, int bigtiff, int epsg_code)
+int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, int bigtiff, int epsg_code, double *bbox)
 {
 
 
@@ -266,13 +266,40 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
             min_x = min_y = DBL_MAX;
             max_x = max_y = DBL_MIN;
             data_count = 0;
-            for (int i = 0; i < input_file_count; i++){
-                if(input_files[i].min_x < min_x){ min_x = input_files[i].min_x; }
-                if(input_files[i].min_y < min_y){ min_y = input_files[i].min_y; }
-                if(input_files[i].max_x > max_x){ max_x = input_files[i].max_x; }
-                if(input_files[i].max_y > max_y){ max_y = input_files[i].max_y; }
-                data_count += input_files[i].point_count;
-                //printf("rank = %i data_count = %li\n", rank, input_files[i].point_count);
+            if (bbox == NULL)
+            {
+                for (int i = 0; i < input_file_count; i++)
+                {
+                    if (input_files[i].min_x < min_x)
+                    {
+                        min_x = input_files[i].min_x;
+                    }
+                    if (input_files[i].min_y < min_y)
+                    {
+                        min_y = input_files[i].min_y;
+                    }
+                    if (input_files[i].max_x > max_x)
+                    {
+                        max_x = input_files[i].max_x;
+                    }
+                    if (input_files[i].max_y > max_y)
+                    {
+                        max_y = input_files[i].max_y;
+                    }
+                    data_count += input_files[i].point_count;
+                }
+            }
+            else //bbox != NULL
+            {
+                min_x = bbox[0];
+                min_y = bbox[1];
+                max_x = bbox[2];
+                max_y = bbox[3];
+                for (int i = 0; i < input_file_count; i++)
+                {
+                    data_count += input_files[i].point_count;
+                }
+
             }
 
         }
@@ -371,11 +398,6 @@ int Interpolation::interpolation(char *inputName,
     double data_x, data_y;
     double data_z;
 
-    if(rank == 0)
-    {
-        //printf("Interpolation Starts, rank %i\n", rank);
-    }
-
     if (inputFormat == INPUT_ASCII && interpolation_mode != INTERP_MPI) {
         FILE *fp;
         char line[1024];
@@ -418,43 +440,54 @@ int Interpolation::interpolation(char *inputName,
             {
                 if (input_file_count == 1)
                 {
-                    printf("input file count == 1\n");
-                    strcpy(inputName, input_files[0].name);
-                    las_file las;
-                    las.open (inputName);
-
-                    size_t count = las.points_count ();
-                    size_t index (0);
-                    size_t stride = count / interp->getReaderCount ();
-                    size_t left_over_count = count % interp->getReaderCount ();
-                    index = rank * stride;
-                    count = (rank + 1) * stride;
-                    if (rank == interp->getReaderCount () - 1)
+                    if (rectangles_overlap (min_x, min_y, max_x, max_y,
+                                            input_files[0].min_x,
+                                            input_files[0].min_y,
+                                            input_files[0].max_x,
+                                            input_files[0].max_y))
                     {
-                        count += left_over_count;
-                    }
+                        printf ("input file count == 1\n");
+                        strcpy (inputName, input_files[0].name);
+                        las_file las;
+                        las.open (inputName);
 
-                    while (index < count)
-                    {
-                        data_x = las.getX (index);
-                        data_y = las.getY (index);
-                        data_z = las.getZ (index);
-
-                        data_x -= min_x;
-                        data_y -= min_y;
-                        //
-                        //cerr << "calling update rank "<< rank << endl;
-                        if ((rc = interp->update (data_x, data_y, data_z)) < 0)
+                        size_t count = las.points_count ();
+                        size_t index (0);
+                        size_t stride = count / interp->getReaderCount ();
+                        size_t left_over_count = count
+                                % interp->getReaderCount ();
+                        index = rank * stride;
+                        count = (rank + 1) * stride;
+                        if (rank == interp->getReaderCount () - 1)
                         {
-                            cerr << "interp->update() error while processing "
-                                    << endl;
-                            return -1;
+                            count += left_over_count;
                         }
-                        index++;
+
+                        while (index < count)
+                        {
+                            data_x = las.getX (index);
+                            data_y = las.getY (index);
+                            data_z = las.getZ (index);
+                            if (point_contained (data_x, data_y, min_x, min_y,
+                                                 max_x, max_y))
+                            {
+                                data_x -= min_x;
+                                data_y -= min_y;
+                                //
+                                //cerr << "calling update rank "<< rank << endl;
+                                if ((rc = interp->update (data_x, data_y,
+                                                          data_z)) < 0)
+                                {
+                                    cerr
+                                            << "interp->update() error while processing "
+                                            << endl;
+                                    return -1;
+                                }
+                            }
+                            index++;
+                        }
                     }
                     interp->getReadDone ()[rank] = 1;
-
-
 
                     for (int i = 0; i < process_count; i++)
                     {
@@ -583,4 +616,17 @@ unsigned int Interpolation::getGridSizeY()
 {
     return GRID_SIZE_Y;
 }
+
+// rx1, ry1 = lower left, rx2, ry2 = upper right
+int Interpolation::point_contained(double x, double y, double rx1, double ry1, double rx2, double ry2)
+{
+    return (x >= rx1 && x <= rx2 && y >= ry1 && y <= ry2);
+}
+// rx1, ry1 = lower left, rx2, ry2 = upper right of first rectangle, sx1, sy1 = lower left, sx2, sy2 = upper right of second rectangle
+int Interpolation::rectangles_overlap (double rx1, double ry1, double rx2, double ry2, double sx1, double sy1, double sx2, double sy2)
+{
+    return sx1 < rx2 && sx2 > rx1 && sy1 < ry2 && sy2 > ry1;
+}
+
+
 
