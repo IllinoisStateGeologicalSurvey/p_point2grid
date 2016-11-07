@@ -82,7 +82,7 @@ Interpolation::Interpolation(double x_dist, double y_dist, double radius,
     reader_count = _reader_count;
     buffer_size = _buffer_size;
     timer = _timer;
-    data_count = 0;
+
     radius_sqr = radius * radius;
     window_size = _window_size;
     interpolation_mode = _interpolation_mode;
@@ -95,7 +95,7 @@ Interpolation::Interpolation(double x_dist, double y_dist, double radius,
 
     max_x = -DBL_MAX;
     max_y = -DBL_MAX;
-    //printf ("mode %i\n", interpolation_mode);
+
 }
 
 Interpolation::~Interpolation()
@@ -106,22 +106,8 @@ Interpolation::~Interpolation()
 int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, int bigtiff, int epsg_code, double *bbox)
 {
 
-
-    //unsigned int i;
-
-    //struct tms tbuf;
     clock_t t0, t1;
 
-
-    //////////////////////////////////////////////////////////////////////
-    // MIN/MAX SEARCHING
-    // TODO: the size of data, min, max of each coordinate
-    //       are required to implement streaming processing....
-    //
-    // This code can be eliminated if database can provide these values
-    //////////////////////////////////////////////////////////////////////
-
-    //t0 = times(&tbuf);
     t0 = clock();
 
     char *inputName = inputNames[0];
@@ -132,15 +118,20 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
         return -1;
     }
 
-    //printf("inputName: '%s'\n", inputName);
     if (interpolation_mode != INTERP_MPI)
     {
+        // Only the first file is used for non mpi runs, set input_files[0].name is needed during interpolation
+        // set it now...
+        input_files = (input_file_info *) malloc (sizeof(input_file_info));
+        input_file_count = 1;
+        input_files[0].name = (char *) malloc ((strlen(inputNames[0]) + 1) * sizeof(char));
+        strcpy (input_files[0].name, inputNames[0]);
+
         if (inputFormat == INPUT_ASCII)
         {
             FILE *fp;
             char line[1024];
             double data_x, data_y;
-            //double data_z;
 
             if ((fp = fopen (inputName, "r")) == NULL)
             {
@@ -166,8 +157,6 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
                 if (max_y < data_y)
                     max_y = data_y;
 
-                data_count++;
-
             }
 
             fclose (fp);
@@ -182,8 +171,6 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
             min_y = las.minimums ()[1];
             max_x = las.maximums ()[0];
             max_y = las.maximums ()[1];
-
-            data_count = las.points_count ();
 
             las.close ();
 
@@ -223,10 +210,10 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
                     input_files[i].point_count = las.points_count ();
                     input_files[i].peek_rank = rank;
                     las.close ();
-                    //printf("rank = %i i = %i data_count = %li\n", rank, i, input_files[i].point_count);
+                    //printf("rank = %i i = %i point_count = %li\n", rank, i, input_files[i].point_count);
 
                 }
-                //printf("rank = %i i = %i data_count = %li input_files[i].rank = %i\n", rank, i, input_files[i].point_count, input_files[i].peek_rank);
+                //printf("rank = %i i = %i point_count = %li input_files[i].rank = %i\n", rank, i, input_files[i].point_count, input_files[i].peek_rank);
             }
             for (int i = 0; i < input_file_count; i++)
             {
@@ -265,45 +252,27 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
             }
             min_x = min_y = DBL_MAX;
             max_x = max_y = DBL_MIN;
-            data_count = 0;
-            if (bbox == NULL)
+
+            for (int i = 0; i < input_file_count; i++)
             {
-                for (int i = 0; i < input_file_count; i++)
+                if (input_files[i].min_x < min_x)
                 {
-                    if (input_files[i].min_x < min_x)
-                    {
-                        min_x = input_files[i].min_x;
-                    }
-                    if (input_files[i].min_y < min_y)
-                    {
-                        min_y = input_files[i].min_y;
-                    }
-                    if (input_files[i].max_x > max_x)
-                    {
-                        max_x = input_files[i].max_x;
-                    }
-                    if (input_files[i].max_y > max_y)
-                    {
-                        max_y = input_files[i].max_y;
-                    }
-                    data_count += input_files[i].point_count;
+                    min_x = input_files[i].min_x;
+                }
+                if (input_files[i].min_y < min_y)
+                {
+                    min_y = input_files[i].min_y;
+                }
+                if (input_files[i].max_x > max_x)
+                {
+                    max_x = input_files[i].max_x;
+                }
+                if (input_files[i].max_y > max_y)
+                {
+                    max_y = input_files[i].max_y;
                 }
             }
-            else //bbox != NULL
-            {
-                min_x = bbox[0];
-                min_y = bbox[1];
-                max_x = bbox[2];
-                max_y = bbox[3];
-                for (int i = 0; i < input_file_count; i++)
-                {
-                    data_count += input_files[i].point_count;
-                }
-
-            }
-
         }
-
     }
 
     t1 = clock();
@@ -312,13 +281,9 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
     // Intialization Step excluding min/max searching
     //////////////////////////////////////////////////////////////////////
 
-    GRID_SIZE_X = (int)(ceil((max_x - min_x)/GRID_DIST_X)) + 1;
-    GRID_SIZE_Y = (int)(ceil((max_y - min_y)/GRID_DIST_Y)) + 1;
-
+    // send input file info collected above by the readers to the writers so all have it
     if(rank == 0){
         for(int i = reader_count; i < process_count; i++){
-            MPI_Send(&GRID_SIZE_X, 1, MPI_UNSIGNED, i, 1, MPI_COMM_WORLD);
-            MPI_Send(&GRID_SIZE_Y, 1, MPI_UNSIGNED, i, 1, MPI_COMM_WORLD);
             MPI_Send (&min_x, 1, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);
             MPI_Send (&min_y, 1, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);
             MPI_Send (&max_x, 1, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);
@@ -326,16 +291,38 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
         }
     }
     if(rank>=reader_count){
-        MPI_Recv(&GRID_SIZE_X, 1, MPI_UNSIGNED, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        MPI_Recv(&GRID_SIZE_Y, 1, MPI_UNSIGNED, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         MPI_Recv(&min_x, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         MPI_Recv(&min_y, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         MPI_Recv(&max_x, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         MPI_Recv(&max_y, 1, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
 
-    //printf("GRID_SIZE_x %i, grid_size y %i, rank %i\n", GRID_SIZE_X, GRID_SIZE_Y, rank);
+    // assign min max values to bbox, return if there is no overlap
+    if (bbox != NULL)
+    {
+        if (rectangles_overlap (min_x, min_y, max_x, max_y, bbox[0], bbox[1],
+                                bbox[2], bbox[3]))
+        {
+            min_x = bbox[0];
+            min_y = bbox[1];
+            max_x = bbox[2];
+            max_y = bbox[3];
+        }
+        else
+        {
+            cerr << "BBOX and LAS input data do not overlap" << endl;
+            return -1;
+        }
 
+    }
+
+    // all processes set raster size
+    GRID_SIZE_X = (int)(ceil((max_x - min_x)/GRID_DIST_X)) + 1;
+    GRID_SIZE_Y = (int)(ceil((max_y - min_y)/GRID_DIST_Y)) + 1;
+
+    //dbg(3, ("GRID_SIZE_x %i, grid_size y %i, rank %i\n", GRID_SIZE_X, GRID_SIZE_Y, rank);
+
+    // Construct an Interp based on the mode
     if (interpolation_mode == INTERP_AUTO) {
         // if the size is too big to fit in memory,
         // then construct out-of-core structure
@@ -347,15 +334,15 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
     }
 
     if (interpolation_mode == INTERP_OUTCORE) {
-        cerr << "Using out of core interp code" << endl;;
 
+        // this is untested and remains for historical reasons
+        cerr << "Using out of core interp code" << endl;
         interp = new OutCoreInterp(GRID_DIST_X, GRID_DIST_Y, GRID_SIZE_X, GRID_SIZE_Y, radius_sqr, min_x, max_x, min_y, max_y, window_size);
         if(interp == NULL)
         {
             cerr << "OutCoreInterp construction error" << endl;
             return -1;
         }
-
         cerr << "Interpolation uses out-of-core algorithm" << endl;
 
     } else if (interpolation_mode == INTERP_MPI){
@@ -363,11 +350,9 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
         interp = new MpiInterp(GRID_DIST_X, GRID_DIST_Y, GRID_SIZE_X, GRID_SIZE_Y, radius_sqr, min_x, max_x, min_y, max_y, window_size, rank, process_count, reader_count, buffer_size, timer);
 
     } else {
-        cerr << "Using incore interp code" << endl;
 
         interp = new InCoreInterp(GRID_DIST_X, GRID_DIST_Y, GRID_SIZE_X, GRID_SIZE_Y, radius_sqr, min_x, max_x, min_y, max_y, window_size);
 
-        cerr << "Interpolation uses in-core algorithm" << endl;
     }
 
     interp->set_bigtiff(bigtiff);
@@ -381,8 +366,7 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
     return 0;
 }
 
-int Interpolation::interpolation(char *inputName,
-                                 char *outputName,
+int Interpolation::interpolation(char *outputName,
                                  int inputFormat,
                                  int outputFormat,
                                  unsigned int outputType)
@@ -397,12 +381,12 @@ int Interpolation::interpolation(char *inputName,
 
     double data_x, data_y;
     double data_z;
-
+    // This case is for historical preservation only, not used or tested
     if (inputFormat == INPUT_ASCII && interpolation_mode != INTERP_MPI) {
         FILE *fp;
         char line[1024];
 
-        if((fp = fopen(inputName, "r")) == NULL)
+        if((fp = fopen(input_files[0].name, "r")) == NULL)
         {
             printf("file open error\n");
             return -1;
@@ -438,7 +422,7 @@ int Interpolation::interpolation(char *inputName,
         {
             if (interp->getIsReader ())
             {
-                if (input_file_count == 1)
+                if (input_file_count == 1) // Single input file
                 {
                     if (rectangles_overlap (min_x, min_y, max_x, max_y,
                                             input_files[0].min_x,
@@ -446,10 +430,8 @@ int Interpolation::interpolation(char *inputName,
                                             input_files[0].max_x,
                                             input_files[0].max_y))
                     {
-                        printf ("input file count == 1\n");
-                        strcpy (inputName, input_files[0].name);
                         las_file las;
-                        las.open (inputName);
+                        las.open (input_files[0].name);
 
                         size_t count = las.points_count ();
                         size_t index (0);
@@ -505,37 +487,51 @@ int Interpolation::interpolation(char *inputName,
                     {
                         if (input_files[i].peek_rank == rank)
                         {
-
-                            dbg(5, "start read and send rank %i, peek_rank %i, name %s, point_count %li, global and file min_x, miny %lf, %lf, %lf, %lf\n", rank, input_files[i].peek_rank, input_files[i].name, input_files[i].point_count, min_x, input_files[i].min_x, min_y, input_files[i].min_y);
-
-                            las_file las;
-                            las.open (input_files[i].name);
-
-                            size_t count = input_files[i].point_count;
-                            size_t index (0);
-
-                            while (index < count)
+                            if (rectangles_overlap (min_x, min_y, max_x, max_y,
+                                                    input_files[i].min_x,
+                                                    input_files[i].min_y,
+                                                    input_files[i].max_x,
+                                                    input_files[i].max_y))
                             {
-                                data_x = las.getX (index);
-                                data_y = las.getY (index);
-                                data_z = las.getZ (index);
-                                assert(data_x >= input_files[i].min_x && data_x <= input_files[i].max_x &&
-                                       data_y >= input_files[i].min_y && data_y <= input_files[i].max_y);
-                                data_x -= min_x;
-                                data_y -= min_y;
-                                //
-                                //cerr << "calling update rank "<< rank << endl;
-                                if ((rc = interp->update (data_x, data_y,
-                                                          data_z)) < 0)
+                                dbg(5,
+                                    "start read and send rank %i, peek_rank %i, name %s, point_count %li, global and file min_x, miny %lf, %lf, %lf, %lf\n",
+                                    rank, input_files[i].peek_rank,
+                                    input_files[i].name,
+                                    input_files[i].point_count, min_x,
+                                    input_files[i].min_x, min_y,
+                                    input_files[i].min_y);
+
+                                las_file las;
+                                las.open (input_files[i].name);
+
+                                size_t count = input_files[i].point_count;
+                                size_t index (0);
+
+                                while (index < count)
                                 {
-                                    cerr
-                                            << "interp->update() error while processing "
-                                            << endl;
-                                    return -1;
+                                    data_x = las.getX (index);
+                                    data_y = las.getY (index);
+                                    data_z = las.getZ (index);
+
+                                    if (point_contained (data_x, data_y, min_x,
+                                                         min_y, max_x, max_y))
+                                    {
+                                        data_x -= min_x;
+                                        data_y -= min_y;
+                                        if ((rc = interp->update (data_x,
+                                                                  data_y,
+                                                                  data_z)) < 0)
+                                        {
+                                            cerr
+                                                    << "interp->update() error while processing "
+                                                    << endl;
+                                            return -1;
+                                        }
+                                    }
+                                    index++;
                                 }
-                                index++;
+                                las.close ();
                             }
-                            las.close();
                             dbg(2, "*** rank %i, input file %s done with read and send ***", rank, input_files[i].name);
                         }
                     }
@@ -558,31 +554,42 @@ int Interpolation::interpolation(char *inputName,
             }
             //MPI_Barrier (MPI_COMM_WORLD);
         }
-        else // interpolation_mode is other than INTERP_MPI
+        else // interpolation_mode is other than INTERP_MPI,
+             // single input file only supported, bbox supported
+
         {
+            if (rectangles_overlap (min_x, min_y, max_x, max_y,
+                                    input_files[0].min_x, input_files[0].min_y,
+                                    input_files[0].max_x, input_files[0].max_y))
+            {
 
-            las_file las;
-            las.open(inputName);
+                las_file las;
+                las.open (input_files[0].name);
 
+                size_t count = las.points_count ();
+                size_t index (0);
+                while (index < count)
+                {
+                    data_x = las.getX (index);
+                    data_y = las.getY (index);
+                    data_z = las.getZ (index);
+                    if (point_contained (data_x, data_y, min_x, min_y, max_x,
+                                         max_y))
+                    {
 
-            size_t count = las.points_count();
-            size_t index(0);
-            while (index < count) {
-                data_x = las.getX(index);
-                data_y = las.getY(index);
-                data_z = las.getZ(index);
+                        data_x -= min_x;
+                        data_y -= min_y;
 
-                data_x -= min_x;
-                data_y -= min_y;
-
-                if ((rc = interp->update(data_x, data_y, data_z)) < 0) {
-                    cerr << "interp->update() error while processing " << endl;
-                    return -1;
+                        if ((rc = interp->update (data_x, data_y, data_z)) < 0)
+                        {
+                            cerr << "interp->update() error while processing "
+                                    << endl;
+                            return -1;
+                        }
+                    }
+                    index++;
                 }
-                index++;
             }
-
-
         }
     }
     if(timer)timer->interp_end = time(NULL);
@@ -600,11 +607,6 @@ int Interpolation::interpolation(char *inputName,
 void Interpolation::setRadius(double r)
 {
     radius_sqr = r * r;
-}
-
-unsigned long Interpolation::getDataCount()
-{
-    return data_count;
 }
 
 unsigned int Interpolation::getGridSizeX()

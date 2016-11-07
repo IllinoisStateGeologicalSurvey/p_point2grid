@@ -570,7 +570,7 @@ int main(int argc, char **argv)
         //printf("Init + Min/Max time: %10.2f\n", (double)(t1 - t0)/CLOCKS_PER_SEC);
     }
     t0 = clock();
-    if(ip->interpolation(inputName, outputName, input_format, output_format, type) < 0)
+    if(ip->interpolation(outputName, input_format, output_format, type) < 0)
     {
         fprintf(stderr, "Interpolation::interpolation() error\n");
         return -1;
@@ -586,7 +586,7 @@ int main(int argc, char **argv)
     {
         printf ("DEM generation + Output time: %10.2f\n",
                 (double) (t1 - t0) / CLOCKS_PER_SEC);
-        printf ("# of data: %lu\n", ip->getDataCount ());
+        //printf ("# of data: %lu\n", ip->getDataCount ());
         printf ("dimension: %d x %d\n", ip->getGridSizeX (),
                 ip->getGridSizeY ());
     }

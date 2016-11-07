@@ -68,9 +68,8 @@ public:
     ~Interpolation();
 
     int init(char **inputNames, int inputNamesSize, int inputFormat, int bigtiff, int epsg_code, double *bbox);
-    int interpolation(char *inputName, char *outputName, int inputFormat,
-                      int outputFormat, unsigned int type);
-    unsigned long getDataCount();
+    int interpolation(char *outputName, int inputFormat, int outputFormat, unsigned int type);
+//    unsigned long getDataCount();
 
     unsigned int getGridSizeX();
     unsigned int getGridSizeY();
@@ -106,7 +105,6 @@ private:
     unsigned int GRID_SIZE_X;
     unsigned int GRID_SIZE_Y;
 
-    unsigned long data_count;
     double radius_sqr;
     int window_size;
     int interpolation_mode;
