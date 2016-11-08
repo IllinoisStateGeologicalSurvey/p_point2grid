@@ -103,7 +103,8 @@ Interpolation::~Interpolation()
     delete interp;
 }
 
-int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, int bigtiff, int epsg_code, double *bbox)
+int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, int bigtiff, int epsg_code, double *bbox,
+                        int *_classifications, int _classification_count, int _first_returns, int _last_returns)
 {
 
     clock_t t0, t1;
@@ -111,6 +112,10 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
     t0 = clock();
 
     char *inputName = inputNames[0];
+    classifications = _classifications;
+    classification_count = _classification_count;
+    first_returns = _first_returns;
+    last_returns = _last_returns;
 
     if(inputName == NULL)
     {
@@ -444,7 +449,7 @@ int Interpolation::interpolation(char *outputName,
                         {
                             count += left_over_count;
                         }
-
+                        size_t points_processed(0);
                         while (index < count)
                         {
                             data_x = las.getX (index);
@@ -453,21 +458,26 @@ int Interpolation::interpolation(char *outputName,
                             if (point_contained (data_x, data_y, min_x, min_y,
                                                  max_x, max_y))
                             {
-                                data_x -= min_x;
-                                data_y -= min_y;
-                                //
-                                //cerr << "calling update rank "<< rank << endl;
-                                if ((rc = interp->update (data_x, data_y,
-                                                          data_z)) < 0)
+                                if (pass_filter(las, index))
                                 {
-                                    cerr
-                                            << "interp->update() error while processing "
-                                            << endl;
-                                    return -1;
+                                    points_processed ++;
+                                    data_x -= min_x;
+                                    data_y -= min_y;
+                                    //
+                                    //cerr << "calling update rank "<< rank << endl;
+                                    if ((rc = interp->update (data_x, data_y,
+                                                              data_z)) < 0)
+                                    {
+                                        cerr
+                                                << "interp->update() error while processing "
+                                                << endl;
+                                        return -1;
+                                    }
                                 }
                             }
                             index++;
                         }
+                        dbg(3, "rank = %i, index = %li, points_processed = %li", rank, index, points_processed);
                     }
                     interp->getReadDone ()[rank] = 1;
 
@@ -506,7 +516,7 @@ int Interpolation::interpolation(char *outputName,
 
                                 size_t count = input_files[i].point_count;
                                 size_t index (0);
-
+                                size_t points_processed (0);
                                 while (index < count)
                                 {
                                     data_x = las.getX (index);
@@ -516,20 +526,26 @@ int Interpolation::interpolation(char *outputName,
                                     if (point_contained (data_x, data_y, min_x,
                                                          min_y, max_x, max_y))
                                     {
-                                        data_x -= min_x;
-                                        data_y -= min_y;
-                                        if ((rc = interp->update (data_x,
-                                                                  data_y,
-                                                                  data_z)) < 0)
+                                        if (pass_filter (las, index))
                                         {
-                                            cerr
-                                                    << "interp->update() error while processing "
-                                                    << endl;
-                                            return -1;
+                                            points_processed++;
+                                            data_x -= min_x;
+                                            data_y -= min_y;
+                                            if ((rc = interp->update (data_x,
+                                                                      data_y,
+                                                                      data_z))
+                                                    < 0)
+                                            {
+                                                cerr
+                                                        << "interp->update() error while processing "
+                                                        << endl;
+                                                return -1;
+                                            }
                                         }
                                     }
                                     index++;
                                 }
+                                dbg(3, "rank = %i, index = %li, points_processed = %li", rank, index, points_processed);
                                 las.close ();
                             }
                             dbg(2, "*** rank %i, input file %s done with read and send ***", rank, input_files[i].name);
@@ -555,7 +571,7 @@ int Interpolation::interpolation(char *outputName,
             //MPI_Barrier (MPI_COMM_WORLD);
         }
         else // interpolation_mode is other than INTERP_MPI,
-             // single input file only supported, bbox supported
+             // single input file only supported, bbox supported, filters supported
 
         {
             if (rectangles_overlap (min_x, min_y, max_x, max_y,
@@ -568,6 +584,7 @@ int Interpolation::interpolation(char *outputName,
 
                 size_t count = las.points_count ();
                 size_t index (0);
+                size_t points_processed(0);
                 while (index < count)
                 {
                     data_x = las.getX (index);
@@ -576,19 +593,25 @@ int Interpolation::interpolation(char *outputName,
                     if (point_contained (data_x, data_y, min_x, min_y, max_x,
                                          max_y))
                     {
-
-                        data_x -= min_x;
-                        data_y -= min_y;
-
-                        if ((rc = interp->update (data_x, data_y, data_z)) < 0)
+                        if (pass_filter (las, index))
                         {
-                            cerr << "interp->update() error while processing "
-                                    << endl;
-                            return -1;
+                            points_processed++;
+                            data_x -= min_x;
+                            data_y -= min_y;
+
+                            if ((rc = interp->update (data_x, data_y, data_z))
+                                    < 0)
+                            {
+                                cerr
+                                        << "interp->update() error while processing "
+                                        << endl;
+                                return -1;
+                            }
                         }
                     }
                     index++;
                 }
+                dbg(3, "index = %li, points_processed = %li", index, points_processed);
             }
         }
     }
@@ -630,5 +653,33 @@ int Interpolation::rectangles_overlap (double rx1, double ry1, double rx2, doubl
     return sx1 < rx2 && sx2 > rx1 && sy1 < ry2 && sy2 > ry1;
 }
 
+int Interpolation::pass_filter (las_file &las, size_t index)
+{
+    if(classification_count == 0 && first_returns == 0 && last_returns == 0)
+    {
+        return 1;
+    }
+    int point_classification = las.getClassification(index);
+    for(int i=0; i < classification_count; i++)
+    {
+        if(point_classification == classifications[i])
+        {
+            return 1;
+        }
+    }
+    if (first_returns && las.getReturnNumber(index)==1)
+    {
+        return 1;
+    }
+    if (last_returns && las.getReturnNumber(index) == las.getReturnCount(index))
+    {
+
+
+        return 1;
+    }
+    dbg(3, "rn %i rc %i", las.getReturnNumber(index),las.getReturnCount(index));
+    return 0;
+
+}
 
 

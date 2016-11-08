@@ -102,6 +102,10 @@ int main(int argc, char **argv)
     int bigtiff = 1;
     int epsg_code = 0;
     double *bbox = NULL;
+    int *classifications = NULL;
+    int classification_count = 0;
+    int first_returns = 0;
+    int last_returns = 0;
 
     int input_format = INPUT_LAS;
     int interpolation_mode = INTERP_AUTO;
@@ -116,6 +120,7 @@ int main(int argc, char **argv)
     po::options_description general("General options"),
        df("Data file(s)"),
        ot("Output Type"),
+       fil("Filter Options"),
        res("Resolution"),
        too("TIFF Output Options"),
        nf("Null Filling"),
@@ -152,6 +157,12 @@ int main(int argc, char **argv)
      "You must specify either data_file_name(s) or an input_data_file_name");
 #endif
 
+
+    fil.add_options()
+    ("keep_class", po::value< std::vector<int> >()->multitoken(), "list of las point classifications to retain")
+    ("first_returns", "retain first pulse return")
+    ("last_returns", "retain last pulse return\n");
+
     ot.add_options()
     ("min", "the Zmin values are stored")
     ("max", "the Zmax values are stored")
@@ -175,7 +186,7 @@ int main(int argc, char **argv)
     ("fill", "fills nulls in the DEM. Default window size is 3.")
     ("fill_window_size", po::value<int>(), "The fill window is set to value. Permissible values are 3, 5 and 7.");
 
-    desc.add(general).add(df).add(ot).add(too).add(res).add(nf);
+    desc.add(general).add(df).add(fil).add(ot).add(too).add(res).add(nf);
 
     po::variables_map vm;
 
@@ -229,6 +240,34 @@ int main(int argc, char **argv)
             }
 
             //dbg(3, "min_x %lf, min_y %lf, max_x %lf, max_y %lf", bbox[0], bbox[1], bbox[2], bbox[3]);
+        }
+
+        // filters
+        if (vm.count ("keep_class"))
+        {
+            if (vm["keep_class"].as<std::vector<int> > ().size () == 0)
+            {
+                throw std::logic_error (
+                        "keep_class must contain at least one integer value");
+            }
+
+            classification_count = vm["keep_class"].as<std::vector<int> >().size();
+            classifications = (int *) malloc (classification_count * sizeof(int));
+
+            for (unsigned i = 0; i < classification_count; i++)
+            {
+                classifications[i] = (vm["keep_class"].as<std::vector<int> > ())[i];
+            }
+
+        }
+
+        if (vm.count ("first_returns"))
+        {
+            first_returns = 1;
+        }
+        if (vm.count ("last_returns"))
+        {
+            last_returns = 1;
         }
 
         // resolution
@@ -555,7 +594,8 @@ int main(int argc, char **argv)
                                           window_size, interpolation_mode, rank, process_count, reader_count, buffer_size, timer);
 
 
-    if(ip->init(inputNames, inputNamesSize, input_format, bigtiff, epsg_code, bbox) < 0)
+    if(ip->init(inputNames, inputNamesSize, input_format, bigtiff, epsg_code, bbox,
+                classifications, classification_count, first_returns, last_returns) < 0)
     {
         fprintf(stderr, "Interpolation::init() error\n");
         return -1;

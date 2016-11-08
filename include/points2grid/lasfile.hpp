@@ -174,6 +174,42 @@ public:
         return z;
     }
     
+    inline unsigned short getIntensity (size_t point)
+    {
+        char *position = (char *) points_offset () + stride () * point + 12;
+
+        unsigned short *i = (unsigned short *) position;
+
+        return *i;
+    }
+
+    inline unsigned char getReturnNumber (size_t point)
+    {
+        char *position = (char *) points_offset () + stride () * point + 14;
+
+        unsigned char *r = (unsigned char *) position;
+
+        return (*r) & 0X7; // return number is in bits 0:2
+    }
+
+    inline unsigned char getReturnCount (size_t point)
+    {
+        char *position = (char *) points_offset () + stride () * point + 14;
+
+        unsigned char *r = (unsigned char *) position;
+
+        return (*r) & 0X38; //return count is in bits 3:5
+    }
+
+    inline unsigned char getClassification (size_t point)
+    {
+        char *position = (char *) points_offset () + stride () * point + 15;
+
+        unsigned char *c = (unsigned char *) position;
+
+        return (*c) & 0X1F;  // classification is in bits 0:4
+    }
+
 private:
     void updateMinsMaxes() {
         if (start_offset_ == 0 && count_ == -1)

@@ -59,6 +59,7 @@ using namespace std;
 #include <points2grid/MpiInterp.hpp>
 #include <points2grid/export.hpp>
 #include <points2grid/Global.hpp>
+#include <points2grid/lasfile.hpp>
 
 class P2G_DLL Interpolation
 {
@@ -67,7 +68,8 @@ public:
                   int _window_size, int _interpolation_mode, int _rank, int _process_count, int _reader_count, long _buffer_size, mpi_times *_timer);
     ~Interpolation();
 
-    int init(char **inputNames, int inputNamesSize, int inputFormat, int bigtiff, int epsg_code, double *bbox);
+    int init(char **inputNames, int inputNamesSize, int inputFormat, int bigtiff, int epsg_code, double *bbox,
+             int *classifications, int classification_count, int first_returns, int last_returns);
     int interpolation(char *outputName, int inputFormat, int outputFormat, unsigned int type);
 //    unsigned long getDataCount();
 
@@ -82,6 +84,7 @@ public:
 
     int point_contained(double x, double y, double rx1, double ry1, double rx2, double ry2);
     int rectangles_overlap (double rx1, double ry1, double rx2, double ry2, double sx1, double sy1, double sx2, double sy2);
+    int pass_filter(las_file &las, size_t index);
 
 public:
     double GRID_DIST_X;
@@ -108,6 +111,12 @@ private:
     double radius_sqr;
     int window_size;
     int interpolation_mode;
+
+    int *classifications;
+    int classification_count;
+    int first_returns;
+    int last_returns;
+
 
     // mpi variables
     int process_count;
