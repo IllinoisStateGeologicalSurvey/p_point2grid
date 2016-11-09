@@ -198,7 +198,7 @@ public:
 
         unsigned char *r = (unsigned char *) position;
 
-        return (*r) & 0X38; //return count is in bits 3:5
+        return ((*r) & 0X38) >> 3; //return count is in bits 3:5
     }
 
     inline unsigned char getClassification (size_t point)

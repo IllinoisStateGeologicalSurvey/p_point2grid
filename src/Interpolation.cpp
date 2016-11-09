@@ -673,11 +673,9 @@ int Interpolation::pass_filter (las_file &las, size_t index)
     }
     if (last_returns && las.getReturnNumber(index) == las.getReturnCount(index))
     {
-
-
         return 1;
     }
-    dbg(3, "rn %i rc %i", las.getReturnNumber(index),las.getReturnCount(index));
+
     return 0;
 
 }
