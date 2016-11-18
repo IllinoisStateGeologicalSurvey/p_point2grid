@@ -68,6 +68,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "mpi.h"
+#include "signal.h"
 
 /////////////////////////////////////////////////////////////
 // Public Methods
@@ -477,7 +478,7 @@ int Interpolation::interpolation(char *outputName,
                             }
                             index++;
                         }
-                        dbg(3, "rank = %i, index = %li, points_processed = %li", rank, index, points_processed);
+                        dbg(5, "rank = %i, index = %li, points_processed = %li", rank, index, points_processed);
                     }
                     interp->getReadDone ()[rank] = 1;
 

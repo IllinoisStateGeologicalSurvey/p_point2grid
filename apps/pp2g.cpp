@@ -73,16 +73,27 @@ POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 
+#include <signal.h>
+
+
 
 namespace po = boost::program_options;
 
 const std::string appName("points2grid");
 
+void signal_handler (int signo) {
+    if(signo == SIGFPE) {
+      dbg(3, "FPE %i", signo);
+      kill(getpid(), SIGSEGV);
+    }
+}
+
+
 
 int main(int argc, char **argv)
 {
 
-
+    signal(SIGFPE, *signal_handler);
     int rank = 0;
     int process_count = 1;
     int reader_count = 1;
@@ -667,3 +678,10 @@ int main(int argc, char **argv)
 
     return 0;
 }
+
+
+
+
+
+
+

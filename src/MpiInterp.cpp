@@ -164,56 +164,46 @@ int MpiInterp::init()
     int i, j;
     writer_count = 0;
     w_row_start_index = w_row_end_index = 0;
-    row_stride = GRID_SIZE_Y/(process_count-reader_count) + 1;
-    // possibly reset row_stride to ensure window filling works correctly
-    // this should be a very rare case, i.e., a small DEM with large number of processes...
-    if(window_size && row_stride<(window_size/2))
-    {
-        row_stride = window_size/2;
-    }
 
-    if(rank<reader_count)
+    if (rank < reader_count)
     {
         is_reader = 1;
 
     }
 
+    row_stride = GRID_SIZE_Y/(process_count-reader_count) + 1;
+    // possibly reset row_stride to ensure window filling works correctly
+    // this should be a very rare case, i.e., a small DEM with large number of processes...
+    if(window_size && row_stride<(window_size/2))
+    {
+        row_stride = window_size/2 + 1;
+    }
+
+    dbg(5, "window_size %i, row_stride %i, rank %i", window_size, row_stride, rank);
+
+
     if(rank >= reader_count)
     {
-        // idea here is that last writer will always have row_count <= row_stride
-        // all earlier rank writers will have row_count = row_stride
+        // idea here is that last writer will always have row_count < row_stride
+        // all earlier rank writers will have row_count = row_stride -1
         w_row_start_index = (rank - reader_count) * row_stride;
         w_row_end_index =   ((rank + 1) - reader_count) * row_stride -1;
-        if(w_row_start_index < GRID_SIZE_Y-1 && w_row_end_index <= GRID_SIZE_Y-1)
+        dbg(5, "before if s %i, e %i, window_size %i, row_stride %i, is_writer %i, rank %i", w_row_start_index, w_row_end_index,window_size, row_stride, is_writer, rank);
+
+        if(w_row_end_index <= GRID_SIZE_Y-1)
         {
             is_writer = 1;
-            // needed for window filling to work correctly, should be rare...
-            // makes what would normally be the next to last writer the last writer
-            if( ((GRID_SIZE_Y-1) - w_row_end_index) < (window_size/2))
-            {
-                w_row_end_index = GRID_SIZE_Y-1;
-            }
-
         }
         else if(w_row_start_index < GRID_SIZE_Y-1 && w_row_end_index > GRID_SIZE_Y-1)
         {
-            // see above window filling comment...
-            if( (w_row_end_index - (GRID_SIZE_Y-1)) < (window_size/2))
-            {
-                is_writer = w_row_start_index = w_row_start_index = 0;
-            }
-            else
-            {
-                is_writer = 1;
-                w_row_end_index = GRID_SIZE_Y-1;
-            }
-
+            is_writer = 1;
+            w_row_end_index = GRID_SIZE_Y-1;
         }
         else // left over processes that are neither readers or writers
         {
             is_writer = w_row_start_index = w_row_start_index = 0;
-
         }
+        dbg(5, "s %i, e %i, window_size %i, row_stride %i, is_writer %i, rank %i", w_row_start_index, w_row_end_index,window_size, row_stride, is_writer, rank);
 
         if (is_writer)
         {
@@ -264,10 +254,11 @@ int MpiInterp::init()
         // that is, there can be processes with rank >=  reader_count + writer_count that have nothing to do
         if(writers[i])
         {
+
             writer_count++;
 
         }
-        // readers will set read_done[rank] = 1 when they are finished readin
+        // readers will set read_done[rank] = 1 when they are finished reading
         read_done[i] = 0;
     }
     // allocate the buffers to send and receive points, use allocation max of 1000 Megs on readers
@@ -1987,7 +1978,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     char *ogr_wkt = NULL;
                     ogr_sr->exportToWkt (&ogr_wkt);
                     gdal->SetProjection (ogr_wkt);
-                    dbg(3, "%s\n", ogr_wkt);
+                    dbg(4, "%s\n", ogr_wkt);
                 }
 
                 // set raster band and no data value
@@ -2007,7 +1998,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 lseek (fd, 2, SEEK_SET);
                 read (fd, b, 2);
                 unsigned long tiff_version = parse_ushort (b);
-                dbg(3, "tiff_version = %li", tiff_version);
+                dbg(4, "tiff_version = %li", tiff_version);
 
                 unsigned long bytes_per_row;
                 unsigned long rows_per_strip;
@@ -2029,7 +2020,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     read (fd, b, 2);
                     unsigned long entry_cnt = parse_ushort (b);
 
-                    dbg(3, "directory_offset %li, entry_cnt %li", directory_offset, entry_cnt);
+                    dbg(4, "directory_offset %li, entry_cnt %li", directory_offset, entry_cnt);
 
                     for (i = 0; i < entry_cnt; i++)
                     {
@@ -2071,7 +2062,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                     lseek (fd, directory_offset, SEEK_SET);
                     read (fd, b, 8);
                     unsigned long entry_cnt = parse_ulong (b);
-                    dbg(3, "directory_offset %li, entry_cnt %li", directory_offset, entry_cnt);
+                    dbg(4, "directory_offset %li, entry_cnt %li", directory_offset, entry_cnt);
 
                     for (i = 0; i < entry_cnt; i++)
                     {
@@ -2080,13 +2071,13 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                         unsigned long data_type = parse_ushort (b + 2);
                         unsigned long data_count = parse_ulong (b + 4);
                         unsigned long data_offset = parse_ulong (b + 12);
-                        dbg(3,
+                        dbg(4,
                             "tag_id %li, data_type %li, data_count %li, data_offset %li",
                             tag_id, data_type, data_count, data_offset);
 
                         if (data_type == 2)
                         {
-                            dbg(3, "data_offset %s", b + 12);
+                            dbg(4, "data_offset %s", b + 12);
                         }
 
                         if (tag_id == 273) // TIFFTAG_STRIPOFFSETS
