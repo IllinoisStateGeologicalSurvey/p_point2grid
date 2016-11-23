@@ -50,21 +50,27 @@ public:
 		void *addr = pregion_->get_address();
 
 		std::string magic((char *)addr, (char *)addr + 4);
+
+
 		if (!boost::iequals(magic, "LASF")) {
 			throw std::runtime_error("Not a las file");
 		}
 
-		char versionMajor = readAs<char>(24);
-		char versionMinor = readAs<char>(25);
+		versionMajor = readAs<char>(24);
+		versionMinor = readAs<char>(25);
 
-		if ((int)(versionMajor * 10 + versionMinor) >= 13) {
-			throw std::runtime_error("Only version 1.0-1.2 files are supported");
+		if ((int)(versionMajor * 10 + versionMinor) >= 13 && (int)(versionMajor * 10 + versionMinor) != 14) {
+			throw std::runtime_error("Only version 1.0-1.2 and version 1.4 files are supported");
 		}
 
 		points_offset_ = readAs<unsigned int>(32*3);
 		points_format_id_ = readAs<unsigned char>(32*3 + 8);
 		points_struct_size_ = readAs<unsigned short>(32*3 + 8 + 1);
 		points_count_ = readAs<unsigned int>(32*3 + 11);
+                if(versionMinor == 4){
+                    points_count_ = readAs<unsigned long>(247);
+
+                }
 
         // std::cerr << "points count: " << points_count_ << std::endl;
 
@@ -111,26 +117,33 @@ public:
 		if (points_struct_size_ != 0)
 			return points_struct_size_;
 
-		switch(points_format_id_) {
-    		case 0:
-    			return 20;
-    		case 1:
-    			return 28;
-    		case 2:
-    			return 26;
-    		case 3:
-    			return 28+6;
-    		default:
-    			break;
-		}
-		throw std::runtime_error("Unknown point format");
-	}
+        switch (points_format_id_)
+        {
+            case 0:
+                return 20;
+            case 1:
+                return 28;
+            case 2:
+                return 26;
+            case 3:
+                return 28 + 6;
+            case 6:
+                return 30;
+            case 7:
+                return 30 + 6;
+            case 8:
+                return 30 + 6 + 2;
+            default:
+                break;
+        }
+        throw std::runtime_error ("Unknown point format");
+    }
 
 	size_t points_count() const {
         if (count_ == -1)
             return points_count_;
         
-        return std::min(points_count_, (unsigned int)count_);
+        return std::min(points_count_, (unsigned long)count_);
 	}
 
 	double* minimums() { return mins_; }
@@ -189,7 +202,14 @@ public:
 
         unsigned char *r = (unsigned char *) position;
 
-        return (*r) & 0X7; // return number is in bits 0:2
+        if(versionMinor == 4)
+        {
+            return (*r) & 0Xf; // return number is in bits 0:3
+        }
+        else
+        {
+            return (*r) & 0X7; // return number is in bits 0:2
+        }
     }
 
     inline unsigned char getReturnCount (size_t point)
@@ -197,17 +217,34 @@ public:
         char *position = (char *) points_offset () + stride () * point + 14;
 
         unsigned char *r = (unsigned char *) position;
-
-        return ((*r) & 0X38) >> 3; //return count is in bits 3:5
+        if (versionMinor == 4)
+        {
+            return ((*r) & 0Xf0) >> 4; //return count is in bits 4:7
+        }
+        else
+        {
+            return ((*r) & 0X38) >> 3; //return count is in bits 3:5
+        }
     }
 
     inline unsigned char getClassification (size_t point)
     {
-        char *position = (char *) points_offset () + stride () * point + 15;
+        if (versionMinor == 4)
+        {
+            char *position = (char *) points_offset () + stride () * point + 16;
 
-        unsigned char *c = (unsigned char *) position;
+            unsigned char *c = (unsigned char *) position;
 
-        return (*c) & 0X1F;  // classification is in bits 0:4
+            return (*c);  // classification is in bits 0:7
+        }
+        else
+        {
+            char *position = (char *) points_offset () + stride () * point + 15;
+
+            unsigned char *c = (unsigned char *) position;
+
+            return (*c) & 0X1F;  // classification is in bits 0:4
+        }
     }
 
 private:
@@ -255,11 +292,14 @@ private:
 	boost::shared_ptr<boost::interprocess::file_mapping> pmapping_;
 	boost::shared_ptr<boost::interprocess::mapped_region> pregion_;
 
-    unsigned int start_offset_;
-	int count_;
+	char versionMajor;
+	char versionMinor;
+
+        unsigned long start_offset_;
+	long count_;
 	unsigned int points_offset_;
 	unsigned char points_format_id_;
-	unsigned int points_count_;
+	unsigned long points_count_;
 	unsigned short points_struct_size_;
 
 	double scale_[3], offset_[3], mins_[3], maxs_[3];

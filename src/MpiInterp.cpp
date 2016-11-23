@@ -2110,9 +2110,9 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                             * bytes_per_row;
                 }
 
-                printf("strip offset count and offset %lu %lu\n", strip_count, strip_offsets);
-                printf("strip byte counts offset %lu\n", strip_byte_counts);
-                printf("rows per strip  %lu\n", rows_per_strip);
+                //printf("strip offset count and offset %lu %lu\n", strip_count, strip_offsets);
+                //printf("strip byte counts offset %lu\n", strip_byte_counts);
+                //printf("rows per strip  %lu\n", rows_per_strip);
 
                 // now finally update the strip offsets and strip byte counts
                 unsigned long cur_write_offset = st_size;
