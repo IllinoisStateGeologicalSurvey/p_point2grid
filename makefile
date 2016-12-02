@@ -15,7 +15,7 @@ ODIR=./obj
 LDIR =./lib
 
 #LIBS=-lm -lgdal -lcurl -lboost_program_options -lboost_iostreams
-LIBS=-lm -lboost_program_options -lboost_iostreams -lgdal
+LIBS=-lm -lboost_program_options -lboost_iostreams -lgdal -lshp
 
 
 _APP_SRC = pp2g.cpp

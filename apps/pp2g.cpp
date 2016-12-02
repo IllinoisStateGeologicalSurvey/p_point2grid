@@ -67,6 +67,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <stdexcept>
 #include <boost/program_options.hpp>
 #include <mpi.h>
+#include <shapefil.h>
+
 
 #ifdef CURL_FOUND
 #include <curl/curl.h>
@@ -92,6 +94,12 @@ void signal_handler (int signo) {
 
 int main(int argc, char **argv)
 {
+
+
+
+
+    SHPHandle shape_filter = NULL;
+    char shape_filter_file_name[1024] = {0};
 
     signal(SIGFPE, *signal_handler);
     int rank = 0;
@@ -147,6 +155,7 @@ int main(int argc, char **argv)
      "'tif' for GDAL GeoTIFF format,\n"
      "the default value is --all")
     ("output_bbox", po::value< std::vector<double> >()->multitoken(), "min X min Y max X max Y")
+    ("output_shape", po::value<std::string>(), "bounding polygon shapefile")
     ("input_format", po::value<std::string>(), "'ascii' expects input point cloud in ASCII format\n"
      "'las' expects input point cloud in LAS format (default)")
     ("interpolation_mode,m", po::value<std::string>()->default_value("auto"), "'incore' stores working data in memory\n"
@@ -252,6 +261,38 @@ int main(int argc, char **argv)
 
             //dbg(3, "min_x %lf, min_y %lf, max_x %lf, max_y %lf", bbox[0], bbox[1], bbox[2], bbox[3]);
         }
+
+
+        if (vm.count ("output_shape"))
+        {
+
+            strcpy(shape_filter_file_name, vm["output_shape"].as<std::string>().c_str());
+
+            shape_filter = SHPOpen(shape_filter_file_name, "rb");
+
+            if (shape_filter == NULL)
+            {
+                throw std::logic_error (
+                        "Could not open shape file for reading");
+            }
+            int shape_type;
+            double shape_min[4];
+            double shape_max[4];
+            SHPGetInfo(shape_filter, NULL, &shape_type, shape_min, shape_max);
+            if (shape_type != SHPT_POLYGON)
+            {
+                throw std::logic_error ("shape file must be type polygon");
+            }
+
+            bbox = (double *) malloc (4 * sizeof(double));
+            bbox[0] = shape_min[0];
+            bbox[1] = shape_min[1];
+            bbox[2] = shape_max[0];
+            bbox[3] = shape_max[1];
+
+            dbg(3, "min_x %lf, min_y %lf, max_x %lf, max_y %lf", bbox[0], bbox[1], bbox[2], bbox[3]);
+        }
+
 
         // filters
         if (vm.count ("keep_class"))
@@ -606,7 +647,7 @@ int main(int argc, char **argv)
 
 
     if(ip->init(inputNames, inputNamesSize, input_format, bigtiff, epsg_code, bbox,
-                classifications, classification_count, first_returns, last_returns) < 0)
+                classifications, classification_count, first_returns, last_returns, shape_filter) < 0)
     {
         fprintf(stderr, "Interpolation::init() error\n");
         return -1;

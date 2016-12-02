@@ -24,6 +24,7 @@
 								<option id="gnu.cpp.compiler.option.include.paths.1738877031" name="Include paths (-I)" superClass="gnu.cpp.compiler.option.include.paths" valueType="includePath">
 									<listOptionValue builtIn="false" value="/usr/lib/openmpi/include"/>
 									<listOptionValue builtIn="false" value="/usr/include/gdal"/>
+									<listOptionValue builtIn="false" value="/home/jwendel/shapelib-1.3.0/install/include"/>
 								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.compiler.input.1967946882" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.input"/>
 							</tool>
@@ -31,6 +32,7 @@
 								<option id="gnu.c.compiler.option.include.paths.1051077255" name="Include paths (-I)" superClass="gnu.c.compiler.option.include.paths" valueType="includePath">
 									<listOptionValue builtIn="false" value="/usr/lib/openmpi/include"/>
 									<listOptionValue builtIn="false" value="/usr/include/gdal"/>
+									<listOptionValue builtIn="false" value="/home/jwendel/shapelib-1.3.0/install/include"/>
 								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1778734298" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>
@@ -42,6 +44,9 @@
 								</inputType>
 							</tool>
 							<tool id="cdt.managedbuild.tool.gnu.assembler.base.647486696" name="GCC Assembler" superClass="cdt.managedbuild.tool.gnu.assembler.base">
+								<option id="gnu.both.asm.option.include.paths.1144236689" superClass="gnu.both.asm.option.include.paths" valueType="includePath">
+									<listOptionValue builtIn="false" value="/home/jwendel/shapelib-1.3.0/install/include"/>
+								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.assembler.input.1596240587" superClass="cdt.managedbuild.tool.gnu.assembler.input"/>
 							</tool>
 						</toolChain>

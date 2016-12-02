@@ -60,6 +60,7 @@ using namespace std;
 #include <points2grid/export.hpp>
 #include <points2grid/Global.hpp>
 #include <points2grid/lasfile.hpp>
+#include <shapefil.h>
 
 class P2G_DLL Interpolation
 {
@@ -69,7 +70,7 @@ public:
     ~Interpolation();
 
     int init(char **inputNames, int inputNamesSize, int inputFormat, int bigtiff, int epsg_code, double *bbox,
-             int *classifications, int classification_count, int first_returns, int last_returns);
+             int *classifications, int classification_count, int first_returns, int last_returns, SHPHandle shape_filter);
     int interpolation(char *outputName, int inputFormat, int outputFormat, unsigned int type);
 //    unsigned long getDataCount();
 
@@ -84,6 +85,8 @@ public:
 
     int point_contained(double x, double y, double rx1, double ry1, double rx2, double ry2);
     int rectangles_overlap (double rx1, double ry1, double rx2, double ry2, double sx1, double sy1, double sx2, double sy2);
+    int in_shape(double x, double y);
+
     int pass_filter(las_file &las, size_t index);
 
 public:
@@ -116,6 +119,31 @@ private:
     int classification_count;
     int first_returns;
     int last_returns;
+    SHPHandle shape_filter;
+
+    struct  FilterIndex
+    {
+        double X;
+        int index;
+    };
+
+    double get_standard_deviation(double a[], int size);
+    SHPObject *shape_filter_object;
+    std::vector<FilterIndex> shape_filter_short_segments;
+    std::vector<FilterIndex> shape_filter_long_segments;
+    double max_short_segment_length;
+
+
+    struct
+    {
+        bool
+        operator() (FilterIndex a, FilterIndex b)
+        {
+            return (a.X) <  (b.X);
+        }
+    } FilterIndexLess;
+
+    int init_shape_filter_index();
 
 
     // mpi variables

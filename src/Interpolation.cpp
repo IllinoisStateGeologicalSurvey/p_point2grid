@@ -97,6 +97,8 @@ Interpolation::Interpolation(double x_dist, double y_dist, double radius,
     max_x = -DBL_MAX;
     max_y = -DBL_MAX;
 
+    shape_filter_object = NULL;
+
 }
 
 Interpolation::~Interpolation()
@@ -105,7 +107,7 @@ Interpolation::~Interpolation()
 }
 
 int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, int bigtiff, int epsg_code, double *bbox,
-                        int *_classifications, int _classification_count, int _first_returns, int _last_returns)
+                        int *_classifications, int _classification_count, int _first_returns, int _last_returns, SHPHandle _shape_filter)
 {
 
     clock_t t0, t1;
@@ -117,6 +119,9 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
     classification_count = _classification_count;
     first_returns = _first_returns;
     last_returns = _last_returns;
+    shape_filter = _shape_filter;
+
+
 
     if(inputName == NULL)
     {
@@ -656,10 +661,19 @@ int Interpolation::rectangles_overlap (double rx1, double ry1, double rx2, doubl
 
 int Interpolation::pass_filter (las_file &las, size_t index)
 {
-    if(classification_count == 0 && first_returns == 0 && last_returns == 0)
+
+
+    if(classification_count == 0 && first_returns == 0 && last_returns == 0 && shape_filter == NULL)
     {
+
         return 1;
     }
+
+    if(!in_shape(las.getX(index), las.getY(index)))
+    {
+        return 0;
+    }
+
     int point_classification = las.getClassification(index);
     for(int i=0; i < classification_count; i++)
     {
@@ -680,5 +694,149 @@ int Interpolation::pass_filter (las_file &las, size_t index)
     return 0;
 
 }
+
+int Interpolation::in_shape(double x, double y)
+{
+    //printf("in_shape\n");
+    if(shape_filter == NULL)
+    {
+        return 1;
+    }
+    //printf("in_shape, before init\n");
+    if(shape_filter_short_segments.empty() && shape_filter_long_segments.empty())
+    {
+        init_shape_filter_index();
+    }
+
+    double min_x = x - max_short_segment_length/2;
+    double max_x = x + max_short_segment_length/2;
+
+
+    std::vector<FilterIndex>::iterator begin;
+    std::vector<FilterIndex>::iterator end;
+
+    FilterIndex lower;
+    lower.X = min_x;
+    lower.index = 0;
+    FilterIndex upper;
+    upper.X = max_x;
+    upper.index = 0;
+
+    begin = std::lower_bound(shape_filter_short_segments.begin(), shape_filter_short_segments.end(), lower, FilterIndexLess);
+    end = std::upper_bound(shape_filter_short_segments.begin(), shape_filter_short_segments.end(), upper, FilterIndexLess);
+
+
+
+
+
+
+
+    return 1;
+
+
+}
+
+
+int Interpolation::init_shape_filter_index()
+{
+
+    shape_filter_object =  SHPReadObject(shape_filter, 0);
+    int shape_filter_segment_count = shape_filter_object->nVertices -1; // point is same as first, don't record it
+    double *segment_lengths = (double *) malloc(shape_filter_segment_count * sizeof(double));
+
+
+    for (int i = 0; i < shape_filter_segment_count; i++)
+    {
+        segment_lengths[i] = fabs(shape_filter_object->padfX[i] - shape_filter_object->padfX[i + 1]);
+    }
+    double segment_length_std_deviation = get_standard_deviation(segment_lengths, shape_filter_segment_count);
+    max_short_segment_length = 4 * segment_length_std_deviation;
+    int short_segments = 0;
+    int long_segments = 0;
+    int *segment_is_short  = (int *) malloc(shape_filter_segment_count * sizeof(int));
+    for (int i = 0; i < shape_filter_segment_count; i++)
+    {
+
+        if(segment_lengths[i] <= max_short_segment_length)
+        {
+           segment_is_short[i] = 1;
+           short_segments++;
+        }
+        else
+        {
+            segment_is_short[i] = 0;
+            long_segments++;
+        }
+    }
+    dbg(3, "before malloc %i %i %lf", short_segments, long_segments, max_short_segment_length);
+
+    FilterIndex *shape_filter_short_indices = (FilterIndex *) malloc(short_segments * sizeof(FilterIndex));
+    FilterIndex *shape_filter_long_indices = (FilterIndex *) malloc(long_segments * sizeof(FilterIndex));
+    int short_index = 0;
+    int long_index = 0;
+    for(int i=0; i<shape_filter_segment_count; i++)
+    {
+        if (segment_is_short)
+        {
+            shape_filter_short_indices[short_index].X = shape_filter_object->padfX[i];
+            shape_filter_short_indices[short_index].index = i;
+            short_index++;
+        }
+        else
+        {
+            shape_filter_long_indices[long_index].X = shape_filter_object->padfX[i];
+            shape_filter_long_indices[long_index].index = i;
+            long_index++;
+        }
+    }
+
+
+
+    if(short_segments > 0)
+    {
+        shape_filter_short_segments = std::vector<FilterIndex>(shape_filter_short_indices, shape_filter_short_indices + short_segments);
+    }
+    if(long_segments >0)
+    {
+        shape_filter_long_segments = std::vector<FilterIndex>(shape_filter_long_indices, shape_filter_long_indices + long_segments);
+    }
+
+    for (unsigned i = 0; i < shape_filter_short_segments.size (); i++)
+    {
+        std::cout << shape_filter_short_segments[i].X << " " << shape_filter_short_segments[i].index << " ";
+    }
+    std::cout << '\n';
+
+    std::sort (shape_filter_short_segments.begin (), shape_filter_short_segments.end (), FilterIndexLess);
+
+    for (unsigned i = 0; i < shape_filter_short_segments.size (); i++)
+    {
+        std::cout << shape_filter_short_segments[i].X << " " << shape_filter_short_segments[i].index << " ";
+    }
+    std::cout << '\n';
+    return 1;
+}
+
+
+double Interpolation::get_standard_deviation(double a[], int size)
+{
+    double sum = 0.0, mean;
+    int i;
+    for(i=0; i<size; i++)
+    {
+        sum += a[i];
+    }
+    mean = sum/size;
+    sum = 0;
+    for(i=0; i<size; i++)
+    {
+        sum += pow(a[i] - mean, 2);
+    }
+    return sqrt(sum/size);
+}
+
+
+
+
 
 
