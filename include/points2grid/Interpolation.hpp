@@ -61,6 +61,10 @@ using namespace std;
 #include <points2grid/Global.hpp>
 #include <points2grid/lasfile.hpp>
 #include <shapefil.h>
+#include <geos/index/quadtree/Quadtree.h>
+#include <geos/geom/Envelope.h>
+
+
 
 class P2G_DLL Interpolation
 {
@@ -119,29 +123,40 @@ private:
     int classification_count;
     int first_returns;
     int last_returns;
+
     SHPHandle shape_filter;
+    geos::index::quadtree::Quadtree shape_filter_index;
+
+    struct ShapeSegment
+    {
+        int shape;
+        int vertex_1;
+    };
+
+    SHPObject **shapes;
+    int shape_count;
 
     struct  FilterIndex
     {
-        double X;
+        double Y;
         int index;
     };
 
-    double get_standard_deviation(double a[], int size);
-    SHPObject *shape_filter_object;
-    std::vector<FilterIndex> shape_filter_short_segments;
-    std::vector<FilterIndex> shape_filter_long_segments;
-    double max_short_segment_length;
+//    double get_standard_deviation(double a[], int size);
+//    SHPObject *shape_filter_object;
+//    std::vector<FilterIndex> shape_filter_short_segments;
+//    std::vector<FilterIndex> shape_filter_long_segments;
+//    double max_short_segment_length;
 
 
-    struct
-    {
-        bool
-        operator() (FilterIndex a, FilterIndex b)
-        {
-            return (a.X) <  (b.X);
-        }
-    } FilterIndexLess;
+//    struct
+//    {
+//        bool
+//        operator() (FilterIndex a, FilterIndex b)
+//        {
+//            return (a.Y) <  (b.Y);
+//        }
+//    } FilterIndexLess;
 
     int init_shape_filter_index();
 

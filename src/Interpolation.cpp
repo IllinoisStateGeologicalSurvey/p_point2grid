@@ -97,7 +97,8 @@ Interpolation::Interpolation(double x_dist, double y_dist, double radius,
     max_x = -DBL_MAX;
     max_y = -DBL_MAX;
 
-    shape_filter_object = NULL;
+    shapes = NULL;
+    shape_count = 0;
 
 }
 
@@ -669,9 +670,9 @@ int Interpolation::pass_filter (las_file &las, size_t index)
         return 1;
     }
 
-    if(!in_shape(las.getX(index), las.getY(index)))
+    if(in_shape(las.getX(index), las.getY(index)))
     {
-        return 0;
+        return 1;
     }
 
     int point_classification = las.getClassification(index);
@@ -703,51 +704,113 @@ int Interpolation::in_shape(double x, double y)
         return 1;
     }
     //printf("in_shape, before init\n");
-    if(shape_filter_short_segments.empty() && shape_filter_long_segments.empty())
+    if(shapes == NULL)
     {
         init_shape_filter_index();
     }
 
-    double min_x = x - max_short_segment_length/2;
-    double max_x = x + max_short_segment_length/2;
+
+    /*
+    double min_y = y - max_short_segment_length/2;
+    double max_y = y + max_short_segment_length/2;
 
 
     std::vector<FilterIndex>::iterator begin;
     std::vector<FilterIndex>::iterator end;
 
     FilterIndex lower;
-    lower.X = min_x;
+    lower.Y = min_y;
     lower.index = 0;
     FilterIndex upper;
-    upper.X = max_x;
+    upper.Y = max_y;
     upper.index = 0;
 
     begin = std::lower_bound(shape_filter_short_segments.begin(), shape_filter_short_segments.end(), lower, FilterIndexLess);
     end = std::upper_bound(shape_filter_short_segments.begin(), shape_filter_short_segments.end(), upper, FilterIndexLess);
-
-
-
-
-
-
-
+*/
     return 1;
-
-
 }
+
+
 
 
 int Interpolation::init_shape_filter_index()
 {
+    shape_count = shape_filter->nRecords;
+    shapes = (SHPObject **) malloc(shape_count * sizeof(SHPObject *));
 
-    shape_filter_object =  SHPReadObject(shape_filter, 0);
+    for(int i=0; i<shape_count; i++)
+    {
+        shapes[i] =  SHPReadObject(shape_filter, i);
+        int part_cnt = shapes[i]->nParts;
+        for(int j=0; j<part_cnt; j++)
+        {
+            int start_vertex = shapes[i]->panPartStart[j];
+            int end_vertex;
+            if(j < part_cnt - 1)
+            {
+                end_vertex = shapes[i]->panPartStart[j+1] - 1;
+            }
+            else
+            {
+                end_vertex =  shapes[i]->nVertices - 1;
+            }
+            for(int k = start_vertex; k < end_vertex; k++)
+                // end_vertex is same as first vertex in a ring, so segment count is end_vertex - start_vertex - 1
+            {
+                double x1,x2,y1,y2;
+                x1=shapes[i]->padfX[k];
+                x2=shapes[i]->padfX[k+1];
+                y1=shapes[i]->padfY[k];
+                y2=shapes[i]->padfY[k+1];
+                //if(fabs(x1-x2)<1.0) x2+=1.0;
+                //else if(fabs(y1-y2)<1.0) y2+=1.0;
+
+                geos::geom::Envelope  env(x1,x2,y1,y2);
+
+                ShapeSegment *segment = (ShapeSegment *)malloc(sizeof(ShapeSegment));
+                segment->shape = i;
+                segment->vertex_1 = k;
+                shape_filter_index.insert(&env, segment);
+                printf("filter insert %i\n", k);
+            }
+
+        }
+    }
+    printf("%s\n", shape_filter_index.toString().c_str());
+
+
+    return 1;
+}
+
+/*
+double Interpolation::get_standard_deviation(double a[], int size)
+{
+    double sum = 0.0, mean;
+    int i;
+    for(i=0; i<size; i++)
+    {
+        sum += a[i];
+    }
+    mean = sum/size;
+    sum = 0;
+    for(i=0; i<size; i++)
+    {
+        sum += pow(a[i] - mean, 2);
+    }
+    return sqrt(sum/size);
+}
+*/
+
+
+/*
     int shape_filter_segment_count = shape_filter_object->nVertices -1; // point is same as first, don't record it
     double *segment_lengths = (double *) malloc(shape_filter_segment_count * sizeof(double));
 
 
     for (int i = 0; i < shape_filter_segment_count; i++)
     {
-        segment_lengths[i] = fabs(shape_filter_object->padfX[i] - shape_filter_object->padfX[i + 1]);
+        segment_lengths[i] = fabs(shape_filter_object->padfY[i] - shape_filter_object->padfY[i + 1]);
     }
     double segment_length_std_deviation = get_standard_deviation(segment_lengths, shape_filter_segment_count);
     max_short_segment_length = 4 * segment_length_std_deviation;
@@ -778,13 +841,13 @@ int Interpolation::init_shape_filter_index()
     {
         if (segment_is_short)
         {
-            shape_filter_short_indices[short_index].X = shape_filter_object->padfX[i];
+            shape_filter_short_indices[short_index].Y = shape_filter_object->padfY[i];
             shape_filter_short_indices[short_index].index = i;
             short_index++;
         }
         else
         {
-            shape_filter_long_indices[long_index].X = shape_filter_object->padfX[i];
+            shape_filter_long_indices[long_index].Y = shape_filter_object->padfY[i];
             shape_filter_long_indices[long_index].index = i;
             long_index++;
         }
@@ -803,7 +866,7 @@ int Interpolation::init_shape_filter_index()
 
     for (unsigned i = 0; i < shape_filter_short_segments.size (); i++)
     {
-        std::cout << shape_filter_short_segments[i].X << " " << shape_filter_short_segments[i].index << " ";
+        std::cout << shape_filter_short_segments[i].Y << " " << shape_filter_short_segments[i].index << " ";
     }
     std::cout << '\n';
 
@@ -811,32 +874,9 @@ int Interpolation::init_shape_filter_index()
 
     for (unsigned i = 0; i < shape_filter_short_segments.size (); i++)
     {
-        std::cout << shape_filter_short_segments[i].X << " " << shape_filter_short_segments[i].index << " ";
+        std::cout << shape_filter_short_segments[i].Y << " " << shape_filter_short_segments[i].index << " ";
     }
     std::cout << '\n';
-    return 1;
-}
-
-
-double Interpolation::get_standard_deviation(double a[], int size)
-{
-    double sum = 0.0, mean;
-    int i;
-    for(i=0; i<size; i++)
-    {
-        sum += a[i];
-    }
-    mean = sum/size;
-    sum = 0;
-    for(i=0; i<size; i++)
-    {
-        sum += pow(a[i] - mean, 2);
-    }
-    return sqrt(sum/size);
-}
-
-
-
-
+*/
 
 
