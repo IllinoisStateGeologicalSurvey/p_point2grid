@@ -62,6 +62,7 @@ using namespace std;
 #include <points2grid/lasfile.hpp>
 #include <shapefil.h>
 #include <geos/index/quadtree/Quadtree.h>
+#include <geos/index/intervalrtree/SortedPackedIntervalRTree.h>
 #include <geos/geom/Envelope.h>
 
 #include <geos/algorithm/RayCrossingCounter.h>
@@ -70,6 +71,7 @@ using namespace std;
 #include <geos/geom/Location.h>
 #include <geos/geom/Coordinate.h>
 #include <geos/geom/CoordinateSequence.h>
+#include <geos/index/ItemVisitor.h>
 
 
 
@@ -139,7 +141,8 @@ private:
     int last_returns;
 
     SHPHandle shape_filter;
-    geos::index::quadtree::Quadtree shape_filter_index;
+//    geos::index::quadtree::Quadtree shape_filter_index;
+    geos::index::intervalrtree::SortedPackedIntervalRTree shape_filter_index;
 
     struct ShapeSegment
     {
@@ -147,30 +150,25 @@ private:
         int vertex_1;
     };
 
+    class ShapeItemVisitor : public geos::index::ItemVisitor
+    {
+    public:
+        std::vector<void *> items;
+        void visitItem(void *item)
+        {
+            items.push_back(item);
+        }
+    };
+
     SHPObject **shapes;
     int shape_count;
 
-    struct  FilterIndex
-    {
-        double Y;
-        int index;
-    };
-
-//    double get_standard_deviation(double a[], int size);
-//    SHPObject *shape_filter_object;
-//    std::vector<FilterIndex> shape_filter_short_segments;
-//    std::vector<FilterIndex> shape_filter_long_segments;
-//    double max_short_segment_length;
-
-
-//    struct
+//    struct  FilterIndex
 //    {
-//        bool
-//        operator() (FilterIndex a, FilterIndex b)
-//        {
-//            return (a.Y) <  (b.Y);
-//        }
-//    } FilterIndexLess;
+//        double Y;
+//        int index;
+//    };
+
 
     int init_shape_filter_index();
 

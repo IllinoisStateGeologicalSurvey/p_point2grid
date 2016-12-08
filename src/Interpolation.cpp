@@ -695,35 +695,35 @@ int Interpolation::pass_filter (las_file &las, size_t index)
 
 }
 
+//static int in_shape_count = 0;
+
 int Interpolation::in_shape(double x, double y)
 {
-    //printf("in_shape\n");
+//    in_shape_count++;
+//    if(in_shape_count % 100000 == 0){
+//        printf("in_shape %lf %lf %i %i\n", x, y, rank, in_shape_count);
+//    }
     if(shape_filter == NULL)
     {
         return 1;
     }
-    //printf("in_shape, before init\n");
+
     if(shapes == NULL)
     {
         init_shape_filter_index();
     }
-    int cross_count = 0;
+
+    ShapeItemVisitor visitor;
+    shape_filter_index.query(y, y, &visitor);
+    std::vector<void*> found_segments;
+    found_segments = visitor.items;
 
     geos::geom::Coordinate las_point;
     las_point.x = x;
     las_point.y = y;
+    int cross_count = 0;
 
-    geos::geom::Envelope env(x-1, max_x + 1, y - 1, y + 1);
-
-    std::vector<void*> found_segments;
-
-    shape_filter_index.query(&env, found_segments);
-
-
-    geos::algorithm::RayCrossingCounter rcc(las_point);
-
-
-    for (std::size_t i = 1; i < found_segments.size (); i++)
+    for (std::size_t i = 0; i < found_segments.size (); i++)
     {
 
         ShapeSegment *segment = (ShapeSegment *)(found_segments[i]);
@@ -738,39 +738,14 @@ int Interpolation::in_shape(double x, double y)
 
         geos::geom::Coordinate p1 (x1, y1);
         geos::geom::Coordinate p2 (x2, y2);
-        printf("%lf %lf   %lf   %lf %lf   %lf\n", x1,x2, x,  y1, y2, y );
-        cross_count = countSegment (p1, p2, las_point);
 
-        //    if ( rcc.isOnSegment() )
-        //            return rcc.getLocation();
+        cross_count += countSegment (p1, p2, las_point);
+        //printf("%i %li %li  %lf    %lf %lf   %lf     %lf %lf\n", cross_count, i, found_segments.size (), x, x1,x2, y ,  y1, y2);
+
     }
 
-
     return cross_count % 2;
-
-
-    /*
-    double min_y = y - max_short_segment_length/2;
-    double max_y = y + max_short_segment_length/2;
-
-
-    std::vector<FilterIndex>::iterator begin;
-    std::vector<FilterIndex>::iterator end;
-
-    FilterIndex lower;
-    lower.Y = min_y;
-    lower.index = 0;
-    FilterIndex upper;
-    upper.Y = max_y;
-    upper.index = 0;
-
-    begin = std::lower_bound(shape_filter_short_segments.begin(), shape_filter_short_segments.end(), lower, FilterIndexLess);
-    end = std::upper_bound(shape_filter_short_segments.begin(), shape_filter_short_segments.end(), upper, FilterIndexLess);
-*/
-
 }
-
-
 
 
 int Interpolation::init_shape_filter_index()
@@ -795,42 +770,34 @@ int Interpolation::init_shape_filter_index()
                 end_vertex =  shapes[i]->nVertices - 1;
             }
             for(int k = start_vertex; k < end_vertex; k++)
-                // end_vertex is same as first vertex in a ring, so segment count is end_vertex - start_vertex - 1
             {
-                double x1,x2,y1,y2;
-                x1=shapes[i]->padfX[k];
-                x2=shapes[i]->padfX[k+1];
-                y1=shapes[i]->padfY[k];
-                y2=shapes[i]->padfY[k+1];
-                //if(fabs(x1-x2)<1.0) x2+=1.0;
-                //else if(fabs(y1-y2)<1.0) y2+=1.0;
+                double min =shapes[i]->padfY[k];
+                double max =shapes[i]->padfY[k+1];
 
-                geos::geom::Envelope  env(x1,x2,y1,y2);
+                if(max<min){
+                    double tmp = min;
+                    min = max;
+                    max = tmp;
+                }
 
                 ShapeSegment *segment = (ShapeSegment *)malloc(sizeof(ShapeSegment));
                 segment->shape = i;
                 segment->vertex_1 = k;
-                shape_filter_index.insert(&env, segment);
-                printf("filter insert %i\n", k);
-            }
+                shape_filter_index.insert(min, max, segment);
 
+            }
         }
     }
-    printf("%s\n", shape_filter_index.toString().c_str());
-
 
     return 1;
 }
-
-
-
 
 int
 Interpolation::countSegment(const geos::geom::Coordinate& p1,
                                  const geos::geom::Coordinate& p2, const geos::geom::Coordinate& point)
 {
-
-
+        // This code is from geos v3.6 RayCrossingCounter.cpp
+        // and adapted for this use
         int cross = 0;
         // For each segment, check if it crosses
         // a horizontal ray running from the test point in
@@ -879,12 +846,6 @@ Interpolation::countSegment(const geos::geom::Coordinate& p1,
                 // For an upward edge, orientationIndex will be positive when p1->p2
                 // crosses ray. Conversely, downward edges should have negative sign.
 
-
-
-
-
-
-
                 int sign = orientationIndex(p1, p2, point);
                 if (sign == 0)
                 {
@@ -903,8 +864,9 @@ Interpolation::countSegment(const geos::geom::Coordinate& p1,
 }
 
 
-
-
+// This code is from geos v3.6 RayCrossingCounter.cpp
+// and called from the countSegment method
+// it avoids counting common segment vertex crossings
 int
 Interpolation::orientationIndex(const geos::geom::Coordinate& p1,
          const geos::geom::Coordinate& p2, const geos::geom::Coordinate& q)
@@ -919,104 +881,5 @@ Interpolation::orientationIndex(const geos::geom::Coordinate& p1,
         return geos::algorithm::RobustDeterminant::signOfDet2x2(dx1,dy1,dx2,dy2);
 }
 
-
-
-
-
-/*
-double Interpolation::get_standard_deviation(double a[], int size)
-{
-    double sum = 0.0, mean;
-    int i;
-    for(i=0; i<size; i++)
-    {
-        sum += a[i];
-    }
-    mean = sum/size;
-    sum = 0;
-    for(i=0; i<size; i++)
-    {
-        sum += pow(a[i] - mean, 2);
-    }
-    return sqrt(sum/size);
-}
-*/
-
-
-/*
-    int shape_filter_segment_count = shape_filter_object->nVertices -1; // point is same as first, don't record it
-    double *segment_lengths = (double *) malloc(shape_filter_segment_count * sizeof(double));
-
-
-    for (int i = 0; i < shape_filter_segment_count; i++)
-    {
-        segment_lengths[i] = fabs(shape_filter_object->padfY[i] - shape_filter_object->padfY[i + 1]);
-    }
-    double segment_length_std_deviation = get_standard_deviation(segment_lengths, shape_filter_segment_count);
-    max_short_segment_length = 4 * segment_length_std_deviation;
-    int short_segments = 0;
-    int long_segments = 0;
-    int *segment_is_short  = (int *) malloc(shape_filter_segment_count * sizeof(int));
-    for (int i = 0; i < shape_filter_segment_count; i++)
-    {
-
-        if(segment_lengths[i] <= max_short_segment_length)
-        {
-           segment_is_short[i] = 1;
-           short_segments++;
-        }
-        else
-        {
-            segment_is_short[i] = 0;
-            long_segments++;
-        }
-    }
-    dbg(3, "before malloc %i %i %lf", short_segments, long_segments, max_short_segment_length);
-
-    FilterIndex *shape_filter_short_indices = (FilterIndex *) malloc(short_segments * sizeof(FilterIndex));
-    FilterIndex *shape_filter_long_indices = (FilterIndex *) malloc(long_segments * sizeof(FilterIndex));
-    int short_index = 0;
-    int long_index = 0;
-    for(int i=0; i<shape_filter_segment_count; i++)
-    {
-        if (segment_is_short)
-        {
-            shape_filter_short_indices[short_index].Y = shape_filter_object->padfY[i];
-            shape_filter_short_indices[short_index].index = i;
-            short_index++;
-        }
-        else
-        {
-            shape_filter_long_indices[long_index].Y = shape_filter_object->padfY[i];
-            shape_filter_long_indices[long_index].index = i;
-            long_index++;
-        }
-    }
-
-
-
-    if(short_segments > 0)
-    {
-        shape_filter_short_segments = std::vector<FilterIndex>(shape_filter_short_indices, shape_filter_short_indices + short_segments);
-    }
-    if(long_segments >0)
-    {
-        shape_filter_long_segments = std::vector<FilterIndex>(shape_filter_long_indices, shape_filter_long_indices + long_segments);
-    }
-
-    for (unsigned i = 0; i < shape_filter_short_segments.size (); i++)
-    {
-        std::cout << shape_filter_short_segments[i].Y << " " << shape_filter_short_segments[i].index << " ";
-    }
-    std::cout << '\n';
-
-    std::sort (shape_filter_short_segments.begin (), shape_filter_short_segments.end (), FilterIndexLess);
-
-    for (unsigned i = 0; i < shape_filter_short_segments.size (); i++)
-    {
-        std::cout << shape_filter_short_segments[i].Y << " " << shape_filter_short_segments[i].index << " ";
-    }
-    std::cout << '\n';
-*/
 
 
