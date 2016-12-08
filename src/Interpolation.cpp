@@ -664,17 +664,16 @@ int Interpolation::pass_filter (las_file &las, size_t index)
 {
 
 
-    if(classification_count == 0 && first_returns == 0 && last_returns == 0 && shape_filter == NULL)
+    if(!in_shape(las.getX(index), las.getY(index)))
     {
-
-        return 1;
+        return 0;
     }
 
-    if(in_shape(las.getX(index), las.getY(index)))
+    if(classification_count == 0 && first_returns == 0 && last_returns == 0)
     {
         return 1;
     }
-
+    // At this point there either is no shape_filter shape_filter has been passed, check the point attr filters
     int point_classification = las.getClassification(index);
     for(int i=0; i < classification_count; i++)
     {
@@ -708,6 +707,46 @@ int Interpolation::in_shape(double x, double y)
     {
         init_shape_filter_index();
     }
+    int cross_count = 0;
+
+    geos::geom::Coordinate las_point;
+    las_point.x = x;
+    las_point.y = y;
+
+    geos::geom::Envelope env(x-1, max_x + 1, y - 1, y + 1);
+
+    std::vector<void*> found_segments;
+
+    shape_filter_index.query(&env, found_segments);
+
+
+    geos::algorithm::RayCrossingCounter rcc(las_point);
+
+
+    for (std::size_t i = 1; i < found_segments.size (); i++)
+    {
+
+        ShapeSegment *segment = (ShapeSegment *)(found_segments[i]);
+        double x1 =
+                shapes[segment->shape]->padfX[segment->vertex_1];
+        double y1 =
+                shapes[segment->shape]->padfY[segment->vertex_1];
+        double x2 =
+                shapes[segment->shape]->padfX[segment->vertex_1 + 1];
+        double y2 =
+                shapes[segment->shape]->padfY[segment->vertex_1 + 1];
+
+        geos::geom::Coordinate p1 (x1, y1);
+        geos::geom::Coordinate p2 (x2, y2);
+        printf("%lf %lf   %lf   %lf %lf   %lf\n", x1,x2, x,  y1, y2, y );
+        cross_count = countSegment (p1, p2, las_point);
+
+        //    if ( rcc.isOnSegment() )
+        //            return rcc.getLocation();
+    }
+
+
+    return cross_count % 2;
 
 
     /*
@@ -728,7 +767,7 @@ int Interpolation::in_shape(double x, double y)
     begin = std::lower_bound(shape_filter_short_segments.begin(), shape_filter_short_segments.end(), lower, FilterIndexLess);
     end = std::upper_bound(shape_filter_short_segments.begin(), shape_filter_short_segments.end(), upper, FilterIndexLess);
 */
-    return 1;
+
 }
 
 
@@ -782,6 +821,107 @@ int Interpolation::init_shape_filter_index()
 
     return 1;
 }
+
+
+
+
+int
+Interpolation::countSegment(const geos::geom::Coordinate& p1,
+                                 const geos::geom::Coordinate& p2, const geos::geom::Coordinate& point)
+{
+
+
+        int cross = 0;
+        // For each segment, check if it crosses
+        // a horizontal ray running from the test point in
+        // the positive x direction.
+
+        // check if the segment is strictly to the left of the test point
+        if (p1.x < point.x && p2.x < point.x)
+                return 0;
+
+        // check if the point is equal to the current ring vertex
+        if (point.x == p2.x && point.y == p2.y)
+        {
+                //isPointOnSegment = true;
+                return 0;
+        }
+
+        // For horizontal segments, check if the point is on the segment.
+        // Otherwise, horizontal segments are not counted.
+        if (p1.y == point.y && p2.y == point.y)
+        {
+                //double minx = p1.x;
+                //double maxx = p2.x;
+
+                //if (minx > maxx)
+                //{
+                //        minx = p2.x;
+                //        maxx = p1.x;
+                //}
+
+                //if (point.x >= minx && point.x <= maxx)
+                        //isPointOnSegment = true;
+
+                return 0;
+        }
+
+        // Evaluate all non-horizontal segments which cross a horizontal ray
+        // to the right of the test pt.
+        // To avoid double-counting shared vertices, we use the convention that
+        // - an upward edge includes its starting endpoint, and excludes its
+        //   final endpoint
+        // - a downward edge excludes its starting endpoint, and includes its
+        //   final endpoint
+        if (((p1.y > point.y) && (p2.y <= point.y)) ||
+                ((p2.y > point.y) && (p1.y <= point.y)) )
+        {
+                // For an upward edge, orientationIndex will be positive when p1->p2
+                // crosses ray. Conversely, downward edges should have negative sign.
+
+
+
+
+
+
+
+                int sign = orientationIndex(p1, p2, point);
+                if (sign == 0)
+                {
+                        //isPointOnSegment = true;
+                        return 0;
+                }
+
+                if (p2.y < p1.y)
+                        sign = -sign;
+
+                // The segment crosses the ray if the sign is strictly positive.
+                if (sign > 0)
+                        cross++;
+        }
+        return cross;
+}
+
+
+
+
+int
+Interpolation::orientationIndex(const geos::geom::Coordinate& p1,
+         const geos::geom::Coordinate& p2, const geos::geom::Coordinate& q)
+{
+        // travelling along p1->p2, turn counter clockwise to get to q return 1,
+        // travelling along p1->p2, turn clockwise to get to q return -1,
+        // p1, p2 and q are colinear return 0.
+        double dx1=p2.x-p1.x;
+        double dy1=p2.y-p1.y;
+        double dx2=q.x-p2.x;
+        double dy2=q.y-p2.y;
+        return geos::algorithm::RobustDeterminant::signOfDet2x2(dx1,dy1,dx2,dy2);
+}
+
+
+
+
 
 /*
 double Interpolation::get_standard_deviation(double a[], int size)

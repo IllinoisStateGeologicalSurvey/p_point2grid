@@ -64,6 +64,14 @@ using namespace std;
 #include <geos/index/quadtree/Quadtree.h>
 #include <geos/geom/Envelope.h>
 
+#include <geos/algorithm/RayCrossingCounter.h>
+#include <geos/algorithm/RobustDeterminant.h>
+#include <geos/geom/Geometry.h>
+#include <geos/geom/Location.h>
+#include <geos/geom/Coordinate.h>
+#include <geos/geom/CoordinateSequence.h>
+
+
 
 
 class P2G_DLL Interpolation
@@ -92,6 +100,12 @@ public:
     int in_shape(double x, double y);
 
     int pass_filter(las_file &las, size_t index);
+
+    int countSegment(const geos::geom::Coordinate& p1,
+                                     const geos::geom::Coordinate& p2, const geos::geom::Coordinate& point);
+    int
+    orientationIndex(const geos::geom::Coordinate& p1,
+             const geos::geom::Coordinate& p2, const geos::geom::Coordinate& q);
 
 public:
     double GRID_DIST_X;
