@@ -141,7 +141,7 @@ private:
     int last_returns;
 
     SHPHandle shape_filter;
-//    geos::index::quadtree::Quadtree shape_filter_index;
+
     geos::index::intervalrtree::SortedPackedIntervalRTree shape_filter_index;
 
     struct ShapeSegment
@@ -162,13 +162,6 @@ private:
 
     SHPObject **shapes;
     int shape_count;
-
-//    struct  FilterIndex
-//    {
-//        double Y;
-//        int index;
-//    };
-
 
     int init_shape_filter_index();
 

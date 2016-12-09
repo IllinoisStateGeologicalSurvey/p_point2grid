@@ -285,8 +285,8 @@ int main(int argc, char **argv)
             }
 
             bbox = (double *) malloc (4 * sizeof(double));
-            bbox[0] = shape_min[0];
-            bbox[1] = shape_min[1];
+            bbox[0] = floor(shape_min[0]);
+            bbox[1] = floor(shape_min[1]);
             bbox[2] = shape_max[0];
             bbox[3] = shape_max[1];
 
