@@ -112,6 +112,7 @@ MpiInterp::MpiInterp(double dist_x, double dist_y,
 
     bigtiff = 1;
     epsg_code = 0;
+    is_fill_empty_cells = 0;
 
     const int nitems=5;
     int          blocklengths[5] = {1,1,1,1,1};
@@ -692,6 +693,15 @@ MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
     t0 = clock ();
     MPI_Barrier (MPI_COMM_WORLD);
 
+    if(is_fill_empty_cells)
+    {
+        fill_empty_cells();
+
+    }
+
+
+
+
 
     if(timer)
     {
@@ -716,6 +726,120 @@ MpiInterp::finish (char *outputName, int outputFormat, unsigned int outputType,
 //////////////////////////////////////////////////////
 // Private Methods
 //////////////////////////////////////////////////////
+void
+MpiInterp::fill_empty_cells ()
+{
+
+    int rc;
+    int i, j;
+    MPI_Barrier (MPI_COMM_WORLD);
+    if (timer)
+    {
+        if (rank == reader_count)
+            printf ("Writers processing cells...\n");
+        timer->process_start = time (NULL);
+    }
+
+// reader_count is the first writer rank, reader ranks are 0 through reader_count-1
+    int first_writer_rank = reader_count;
+    int last_writer_rank = first_writer_rank + writer_count - 1;
+    int row_count = w_row_end_index - w_row_start_index + 1;
+    int cur_index;
+    int begin, end;
+
+    if (is_writer)
+    {
+        for (i = 0; i < row_count; i++)
+        {
+            begin = 0;
+            end  = GRID_SIZE_X  - 1;
+            int reset = 1;
+            int last_call = 0;
+            for (j = 0; j < GRID_SIZE_X; j++)
+            {
+                if(interp[i][j].count)
+                {
+                    if(begin < j)
+                    {
+                        fill_empty_cell (i, j, begin, reset, last_call);
+                        begin = j + 1;
+                        reset = 0;
+                    }
+                }
+
+            }
+            if (interp[i][GRID_SIZE_X-1].count == 0)
+            {
+                last_call =1;
+                if (begin < j)
+                {
+                    fill_empty_cell (i, j, begin, reset, last_call);
+                }
+            }
+        }
+    }
+}
+
+void
+MpiInterp::fill_empty_cell (int i, int j, int begin, int reset, int last_call)
+{
+
+    GridPoint cur = interp[i][j];
+
+    if (!last_call)
+    {
+        if (reset) // handles first call for this range where there are only empty points to the left of begin to j range
+        {
+            for (int k = begin; k < j; k++)
+            {
+
+                interp[i][k].Zmin = cur.Zmin;
+                interp[i][k].Zmax = cur.Zmax;
+                interp[i][k].Zmean = cur.Zmean;
+                interp[i][k].Zstd = cur.Zstd;
+                interp[i][k].Zidw = cur.Zidw;
+                interp[i][k].empty = 1;
+            }
+        }
+        else
+        {
+            GridPoint bm1 = interp[i][begin - 1]; // bm1 means: begin minus 1
+            double range = j - begin + 1;
+            double range_idx = 1.0;
+            for (int k = begin; k < j; k++)
+            {
+                interp[i][k].Zmin = bm1.Zmin
+                        + (cur.Zmin - bm1.Zmin) * (range_idx / range);
+                interp[i][k].Zmax = bm1.Zmax
+                        + (cur.Zmax - bm1.Zmax) * (range_idx / range);
+                interp[i][k].Zmean = bm1.Zmean
+                        + (cur.Zmean - bm1.Zmean) * (range_idx / range);
+                interp[i][k].Zstd = bm1.Zstd
+                        + (cur.Zstd - bm1.Zstd) * (range_idx / range);
+                interp[i][k].Zidw = bm1.Zidw
+                        + (cur.Zidw - bm1.Zidw) * (range_idx / range);
+                interp[i][k].empty = 1;
+                range_idx += 1.0;
+
+            }
+        }
+    }
+    else if (last_call)
+    {
+        GridPoint bm1 = interp[i][begin - 1]; // bm1 means: begin minus 1
+        for (int k = begin; k < j; k++)
+        {
+
+            interp[i][k].Zmin = bm1.Zmin;
+            interp[i][k].Zmax = bm1.Zmax;
+            interp[i][k].Zmean = bm1.Zmean;
+            interp[i][k].Zstd = bm1.Zstd;
+            interp[i][k].Zidw = bm1.Zidw;
+            interp[i][k].empty = 1;
+        }
+
+    }
+}
 
 GridPoint **
 MpiInterp::allocRows (int cnt)
@@ -971,8 +1095,6 @@ void MpiInterp::updateGridPoint(int x, int y, double data_z, double distance)
     //printf("update starts, rank %i, count %i\n", rank, count);
     //printf ("updateGridPoint rank %i, x %i, y %i, count %i\n", rank, x, y, count);
 
-    //todo update to work with more than one reader
-    //int reader_count = 1;
 
     y -= (rank-reader_count)*row_stride;
 
@@ -1966,7 +2088,7 @@ MpiInterp::outputFile (char *outputName, int outputFormat,
                 transform[0] = min_x;
                 transform[1] = GRID_DIST_X;
                 transform[2] = 0;
-                transform[3] = min_y + GRID_SIZE_Y;
+                transform[3] = min_y + (GRID_SIZE_Y * GRID_DIST_Y);
                 transform[4] = 0;
                 transform[5] = -GRID_DIST_Y;
                 gdal->SetGeoTransform (transform);

@@ -96,7 +96,9 @@ private:
     MPI_Datatype mpi_grid_point;
     GridPoint **interp;
     double radius_sqr;
-
+    int is_fill_empty_cells;
+    void fill_empty_cells();
+    void fill_empty_cell(int row, int col, int begin, int reset, int last_call);
 
 private:
     GridPoint ** allocRows(int cnt);
@@ -104,8 +106,6 @@ private:
     void update_second_quadrant(double data_z, int base_x, int base_y, double x, double y);
     void update_third_quadrant(double data_z, int base_x, int base_y, double x, double y);
     void update_fourth_quadrant(double data_z, int base_x, int base_y, double x, double y);
-
-
 
     void updateGridPoint(int x, int y, double data_z, double distance);
     void printArray();
@@ -115,13 +115,7 @@ private:
     unsigned int parse_uint(unsigned char *buffer);
     unsigned short parse_ushort(unsigned char *buffer);
 
-    //int reader_count_param;
 
-
-    //int comm_x;
-   // int comm_y;
-    //double comm_data_z;
-    //double comm_distance;
     int row_stride;  // set for all processes, this is the y grid stride between workers, last worker my have smaller row size
     int w_row_start_index; // set only for workers aka writers
     int w_row_end_index; // set only for workers aka writers
