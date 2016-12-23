@@ -51,6 +51,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <points2grid/CoreInterp.hpp>
 #include <points2grid/GridFile.hpp>
 #include <points2grid/Global.hpp>
+#include <points2grid/Interpolation.hpp>
 
 
 #include <mpi.h>
@@ -61,7 +62,8 @@ class P2G_DLL MpiInterp : public CoreInterp
 {
 public:
     MpiInterp() {};
-    MpiInterp(double dist_x, double dist_y,
+
+    MpiInterp(Interpolation *_interpolator, double dist_x, double dist_y,
                  int size_x, int size_y,
                  double r_sqr,
                  double _min_x, double _max_x,
@@ -88,6 +90,8 @@ public:
 
 
 private:
+    Interpolation *interpolator;
+
     int rank;
     int process_count;
     long buffer_size;

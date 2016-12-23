@@ -134,6 +134,7 @@ int main(int argc, char **argv)
     double GRID_DIST_Y = 6.0;
     double searchRadius = (double) sqrt(2.0) * GRID_DIST_X;
     int window_size = 0;
+    int fill_empty = 0;
 
     // argument processing..
     po::options_description general("General options"),
@@ -204,7 +205,8 @@ int main(int argc, char **argv)
 
     nf.add_options()
     ("fill", "fills nulls in the DEM. Default window size is 3.")
-    ("fill_window_size", po::value<int>(), "The fill window is set to value. Permissible values are 3, 5 and 7.");
+    ("fill_window_size", po::value<int>(), "The fill window is set to value. Permissible values are 3, 5 and 7.")
+    ("fill_empty", "Fill all empty cells using row wise linear interpolation");
 
     desc.add(general).add(df).add(fil).add(ot).add(too).add(res).add(nf);
 
@@ -408,6 +410,10 @@ int main(int argc, char **argv)
             if(!((window_size == 3) || (window_size == 5) || (window_size == 7))) {
                 throw std::logic_error("window-size must be either 3, 5, or 7");
             }
+        }
+
+        if(vm.count("fill_empty")) {
+            fill_empty = 1;
         }
 
         if(vm.count("input_format")) {
@@ -647,7 +653,7 @@ int main(int argc, char **argv)
 
 
     if(ip->init(inputNames, inputNamesSize, input_format, bigtiff, epsg_code, bbox,
-                classifications, classification_count, first_returns, last_returns, shape_filter) < 0)
+                classifications, classification_count, first_returns, last_returns, shape_filter, fill_empty) < 0)
     {
         fprintf(stderr, "Interpolation::init() error\n");
         return -1;

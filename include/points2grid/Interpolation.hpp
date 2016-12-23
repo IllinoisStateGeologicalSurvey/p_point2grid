@@ -54,9 +54,7 @@ using namespace std;
 #include <points2grid/export.hpp>
 #include <points2grid/GridPoint.hpp>
 #include <points2grid/CoreInterp.hpp>
-#include <points2grid/OutCoreInterp.hpp>
-#include <points2grid/InCoreInterp.hpp>
-#include <points2grid/MpiInterp.hpp>
+
 #include <points2grid/export.hpp>
 #include <points2grid/Global.hpp>
 #include <points2grid/lasfile.hpp>
@@ -79,12 +77,14 @@ using namespace std;
 class P2G_DLL Interpolation
 {
 public:
+    Interpolation() {};
+
     Interpolation(double x_dist, double y_dist, double radius,
                   int _window_size, int _interpolation_mode, int _rank, int _process_count, int _reader_count, long _buffer_size, mpi_times *_timer);
     ~Interpolation();
 
     int init(char **inputNames, int inputNamesSize, int inputFormat, int bigtiff, int epsg_code, double *bbox,
-             int *classifications, int classification_count, int first_returns, int last_returns, SHPHandle shape_filter);
+             int *classifications, int classification_count, int first_returns, int last_returns, SHPHandle shape_filter, int fill_empty);
     int interpolation(char *outputName, int inputFormat, int outputFormat, unsigned int type);
 //    unsigned long getDataCount();
 
@@ -121,6 +121,17 @@ public:
     static const unsigned int MEM_LIMIT = 200000000;
     CoreInterp *getInterp(){return interp;}
 
+    int
+    get_fill_empty () const
+    {
+        return fill_empty;
+    }
+
+    SHPHandle
+    get_shape_filter () const
+    {
+        return shape_filter;
+    }
 
 private:
     double min_x;
@@ -141,6 +152,7 @@ private:
     int last_returns;
 
     SHPHandle shape_filter;
+    int fill_empty;
 
     geos::index::intervalrtree::SortedPackedIntervalRTree shape_filter_index;
 

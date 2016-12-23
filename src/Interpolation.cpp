@@ -48,6 +48,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <points2grid/Interpolation.hpp>
 #include <points2grid/Global.hpp>
 
+#include <points2grid/OutCoreInterp.hpp>
+#include <points2grid/InCoreInterp.hpp>
+#include <points2grid/MpiInterp.hpp>
+
 #include <string.h>
 #include <math.h>
 #include <float.h>
@@ -108,7 +112,7 @@ Interpolation::~Interpolation()
 }
 
 int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, int bigtiff, int epsg_code, double *bbox,
-                        int *_classifications, int _classification_count, int _first_returns, int _last_returns, SHPHandle _shape_filter)
+                        int *_classifications, int _classification_count, int _first_returns, int _last_returns, SHPHandle _shape_filter, int _fill_empty)
 {
 
     clock_t t0, t1;
@@ -121,6 +125,7 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
     first_returns = _first_returns;
     last_returns = _last_returns;
     shape_filter = _shape_filter;
+    fill_empty = _fill_empty;
 
 
 
@@ -359,7 +364,7 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
 
     } else if (interpolation_mode == INTERP_MPI){
 
-        interp = new MpiInterp(GRID_DIST_X, GRID_DIST_Y, GRID_SIZE_X, GRID_SIZE_Y, radius_sqr, min_x, max_x, min_y, max_y, window_size, rank, process_count, reader_count, buffer_size, timer);
+        interp = new MpiInterp(this, GRID_DIST_X, GRID_DIST_Y, GRID_SIZE_X, GRID_SIZE_Y, radius_sqr, min_x, max_x, min_y, max_y, window_size, rank, process_count, reader_count, buffer_size, timer);
 
     } else {
 

@@ -58,7 +58,9 @@ typedef P2G_DLL struct
     double Zstd;    // M2 from https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Online_algorithm
     double Zstd_tmp;  // mean from above.
     double sum;
-    int empty;
-    int filled;
+    int empty;  // set to 1 when at least one point falls within this GridPoint
+    int filled; // set to 1 when window filling fills this GridPoint
+    int outside_filter; // set to 1 when this GridPoint is outside of any user supplied bbox or shape filter
+
 } GridPoint;
 
