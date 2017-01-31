@@ -4,7 +4,7 @@ CC=mpic++
 #CFLAGS=-I$(IDIR) -I/usr/include/gdal 
 # set debug level below or in the environment 
 # 0 turns off messages, increasing value increases verbosity, 5 is max verbosity.
-PP2G_DEBUG_LEVEL?=3
+PP2G_DEBUG_LEVEL?=0
 #CFLAGS=-I$(IDIR) -w -g -fpermissive -I/usr/include/gdal -DPP2G_DEBUG_LEVEL=$(PP2G_DEBUG_LEVEL)
 CFLAGS=-I$(IDIR) -g -fpermissive -I/usr/include/gdal -DPP2G_DEBUG_LEVEL=$(PP2G_DEBUG_LEVEL)
 #CFLAGS=-I$(IDIR) -O3 -fpermissive
@@ -40,7 +40,7 @@ p_points2grid: $(APP_OBJ) $(LIB_OBJ)
 	$(CC) -o $@ $^ $(CFLAGS) $(LIBS)
 	mkdir -p bin
 	cp $@ bin
-	cp $@ ~/p_points2grid_test
+#	cp $@ ~/p_points2grid_test
 
 $(ODIR)/%.o: $(ADIR)/%.cpp
 	$(CC) -c -o $@ $< $(CFLAGS)
