@@ -1,45 +1,45 @@
 #include <iostream>
 #include <iomanip>
 #include <vector>
-#include "Point.hpp"
-#include "util.hpp"
+#include "pct/Point.hpp"
+#include "pct/util.hpp"
 #include <math.h>
 
 using namespace std;
 
-point::point() {
+Point::Point() {
 	x = 0;
 	y = 0;
 	z = 0;
 }
 
-point::~point() {
+Point::~Point() {
 	x = 0;
 	y = 0;
 	z = 0;
 }
 
 /* Copy constructor */
-point::point(const struct point &pt) {
+Point::Point(const struct Point &pt) {
 	x = pt.x;
 	y = pt.y;
 	z = pt.z;
 };
 
-void point::update(double _x, double _y, double _z) {
+void Point::update(double _x, double _y, double _z) {
 	x = _x;
 	y = _y;
 	z = _z;
 }
 
-void point::clear() {
+void Point::clear() {
 	x = 0.0;
 	y = 0.0;
 	z = 0.0;
 };
 
 
-void point::print() const {
+void Point::print() const {
 	// Set desired precision
 	cout << fixed;
 	cout << setprecision(2);
@@ -62,16 +62,16 @@ void point::print() const {
 //			&& y > pt2->y);
 //}
 // Get vector magnitude(or length from origin)
-double point::magntd() const {
+double Point::magntd() const {
 	return sqrt(pow(x, 2.0) + pow(y, 2.0) + pow(z, 2.0));
 }
 // Return dot product of points
-double point::dot(const struct point *pt) const {
+double Point::dot(const struct Point *pt) const {
 	return (x * pt->x + y * pt->y + z * pt->z);
 }
 
 
-double point::distance(const struct point *pt2) const {
+double Point::distance(const struct Point *pt2) const {
 	double dx = x - pt2->x;
 	double dy = y - pt2->y;
 	double dz = z - pt2->z;
@@ -79,20 +79,20 @@ double point::distance(const struct point *pt2) const {
 	//return (dot(pt2)/(magntd() * pt2->magntd()));
 }
 
-double point::altitd(const struct point *pt2) const {
+double Point::altitd(const struct Point *pt2) const {
 	double dx = x - pt2->x;
 	double dy = y - pt2->y;
 	double dz = z - pt2->z;
 	return to_degrees(atan2(dy, sqrt(dx*x + dz*z)));
 }
 
-double point::slope(const struct point *pt2) const {
+double Point::slope(const struct Point *pt2) const {
 	double dist = distance(pt2);
 	double dz = pt2->z - z;
 	return (dz / dist);
 }
 
-double point::azimth(const struct point *pt2) const {
+double Point::azimth(const struct Point *pt2) const {
 	double dx = x - pt2->x;
 	double dy = y - pt2->y;
 	double dz = z - pt2->z;
@@ -107,7 +107,7 @@ double point::azimth(const struct point *pt2) const {
 //              |-----------|
 //              |  2  |  3  |
 //              -------------
-int point::orientation(const struct point *pt) {
+int Point::orientation(const struct Point *pt) {
 	int flag = 0;
 	if (pt->x > x) {
 		flag++;
@@ -120,7 +120,7 @@ int point::orientation(const struct point *pt) {
 
 
 
-void point::randomize() {
+void Point::randomize() {
 	x = randomVal(360, -180);
 	y = randomVal(180, -90);
 	z = randomVal(12500, -12500);
@@ -128,14 +128,14 @@ void point::randomize() {
 
 
 // Methods to compare for sorting
-bool compareX(const point &pt1, const point &pt2) {
+bool compareX(const Point &pt1, const Point &pt2) {
 	return pt1.x < pt2.x;
 }
 
-bool compareY(const point &pt1, const point &pt2) {
+bool compareY(const Point &pt1, const Point &pt2) {
 	return pt1.y < pt2.y;
 }
 
-bool compareZ(const point &pt1, const point &pt2) {
+bool compareZ(const Point &pt1, const Point &pt2) {
 	return pt1.z < pt2.z;
 }

@@ -9,10 +9,10 @@
 #include <iomanip>
 #include <float.h>
 #include <algorithm>
-#include "Point.hpp"
-#include "Grid.hpp"
-#include "GridPoint.hpp"
-#include "DTypes.h"
+#include "pct/Point.hpp"
+#include "pct/Grid.hpp"
+#include "pct/Pixel.hpp"
+#include "pct/DTypes.hpp"
 
 #include "gdal.h"
 #include "cpl_conv.h" // for CPLMalloc()
@@ -25,15 +25,15 @@ Grid::Grid() {
 	rows = 0;
 	datatype = DT_Unknown;
 	data = NULL;
-	origin = new point();
+	origin = new Point();
 }
 /* Note Currently origin is assuming lower-left corner for index function,
   This is not standard for raster data nor is it recommended. Need to change for
   interoperability
 */
-Grid::Grid(const struct point *_origin, int _cols, int _rows, DType _datatype, double _resX, double _resY) 
+Grid::Grid(const struct Point *_origin, int _cols, int _rows, DType _datatype, double _resX, double _resY) 
 {
-	origin = new point(*_origin);
+	origin = new Point(*_origin);
 	cols = _cols;
 	rows = _rows;
 	datatype = _datatype;
@@ -63,7 +63,7 @@ void * Grid::alloc() {
 		return NULL;
 	}
 	fprintf(stdout, "Allocating %ix%i %s cells", cols, rows, GetDataTypeName(datatype));
-	data = (GridPoint*)malloc(sizeof(GridPoint) * cols * rows);
+	data = (Pixel*)malloc(sizeof(Pixel) * cols * rows);
 	//data = malloc(sizeof(cols * rows * d_size));
 	return data;
 }
@@ -76,7 +76,7 @@ void Grid::dealloc() {
 }
 
 // Create a geotiff from the raster
-int Grid::write(char* outPath, char* projSRS) {
+int Grid::write(char* outPath, int epsg) {
 	GDALDatasetH hDataset;
 	
 	GDALAllRegister();
@@ -84,10 +84,10 @@ int Grid::write(char* outPath, char* projSRS) {
 	GDALDriverH hDriver = GDALGetDriverByName( pszFormat );
 	char **papszMetadata;
 	char **papszOptions = NULL;
-	OGRSpatialReference hSRS;
+	OGRSpatialReferenceH hSRS = OSRNewSpatialReference( NULL );
 	char *pszSRS_WKT = NULL;
 	GDALRasterBandH hBand;
-
+	OGRErr err;
 	if ( hDriver == NULL )
 		exit (1 );
 
@@ -101,22 +101,39 @@ int Grid::write(char* outPath, char* projSRS) {
 
 	double adfGeoTransform[6] = { origin->x, resX, 0, origin->y, 0, resY * -1};
 	// Geotransform for the raster
+	printf("Setting GeoTranform\n");
 	GDALSetGeoTransform(hDataset, adfGeoTransform);
-	hSRS.importFromProj4(projSRS);
+	printf("Import EPSG definition\n");
+	char proj4str[240] = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs";
+	err = OSRImportFromProj4(hSRS, &proj4str[0]);
+	if (err != 0) {
+		fprintf(stderr, "Error importing EPSG:%i , ErrCode: %i\n", epsg, err);
+	}
 	// Create WKT definition of projection
+	printf("Translating SRS to WKT\n");
 	OSRExportToWkt(hSRS, &pszSRS_WKT);
 	OSRDestroySpatialReference(hSRS);
+	printf("Setting output projection to %s\n", pszSRS_WKT);
 	GDALSetProjection(hDataset, pszSRS_WKT);
 	CPLFree( pszSRS_WKT);
 
 	hBand = GDALGetRasterBand(hDataset, 1);
-	GDALRasterIO(hBand, GF_Write, 0, 0, cols, rows, data, cols, rows, GDT_Float32, 0,0);
+	printf("Allocating sum array\n");
+	float* outArr = getSumArr();
+	printf("Writing output raster to %s\n", &outPath[0]);
+	GDALRasterIO(hBand, GF_Write, 0, 0, cols, rows, outArr, cols, rows, GDT_Float32, 0,0);
 	/*Close the dataset*/
+	printf("Closing Raster\n");
+
 	GDALClose( hDataset);
+
+	free(outArr);
 	return 1;
 }
 
-
+int Grid::cellCount() {
+	return rows* cols;
+}
 
 
 size_t Grid::getSize() {
@@ -150,8 +167,8 @@ int Grid::getRow(double coord) {
 	int idx = ceil((origin->y - coord) / resY);
 	return idx;
 }
-/** Test if a point intersects with the grid **/
-int Grid::within(const struct point *pt) {
+/** Test if a Point intersects with the grid **/
+int Grid::within(const struct Point *pt) {
 	int flag = 0;
 	if (pt->x >= origin->x && pt->x <= getMaxX()) {
 		if (pt->y >= getMinY() && pt->y <= origin->y) {
@@ -164,18 +181,19 @@ int Grid::within(const struct point *pt) {
 	}
 	return flag;
 }
-/* Assumes that the point is in raster coordinates */
-int Grid::set(const struct point* pt) {
+/* Assumes that the Point is in raster coordinates */
+int Grid::set(const struct Point* pt) {
 	int i, j;
 	int count = cols * rows;
 	i = (pt->y * rows) + pt->x;
 	if (i < 0 || i > count) {
 		return 0;
 	}
-	GridPoint* cell = &data[i];
-	if (cell->empty) {
+	Pixel* cell = &data[i];
+	if (!cell->filled) {
 		cell->sum = pt->z;
 		cell->count = 1;
+		cell->filled = 1;
 		return 1;
 	} else {
 		float tmpSum = cell->sum + pt->z;
@@ -186,7 +204,35 @@ int Grid::set(const struct point* pt) {
 	
 }
 
-int Grid::getCell(const struct point *pt, int* idx) {
+float* Grid::getSumArr() {
+	float* out = (float*)malloc(sizeof(float) * cols * rows);
+	int count = cellCount();
+	int i = 0;
+	for (i = 0; i < count; i++) {
+		if (data[i].filled) {
+			out[i] = data[i].sum;
+		} else {
+			out[i] = -9999.0;
+		}
+	}
+	return &out[0];
+}
+
+
+Pixel* Grid::get(int col, int row) {
+	Pixel* pix = NULL;
+	if (data == NULL) {
+		printf("Error: Array not initialized");
+		exit(1);
+	} else {
+		int vectorIdx = row * rows + col;
+		return &data[vectorIdx];
+	}
+}
+
+
+
+int Grid::getCell(const struct Point *pt, int* idx) {
 	int i, j = 0;
 	if (!within(pt))  {
 		cout << "Point outside grid bounds\n";

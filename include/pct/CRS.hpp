@@ -2,9 +2,9 @@
 #define ECEF_HPP
 
 #include <math.h>
-#include "Point.hpp"
+#include "pct/Point.hpp"
 #include <iostream>
-#include "geocent.h"
+#include "pct/geocent.h"
 class CRS
 {
 	private:
@@ -16,8 +16,8 @@ class CRS
 	public:
 		CRS();
 		~CRS();
-		void transform(struct point *pt);
-		void reverse(struct point *pt);
+		void transform(struct Point *pt);
+		void reverse(struct Point *pt);
 };
 
 #endif

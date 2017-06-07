@@ -5,15 +5,15 @@
 
 using namespace std;
 
-struct point
+typedef struct Point
 {
 	double x;
 	double y;
 	double z;
-	point();
-	point(double x, double y, double z): x(x), y(y), z(z) {};
-	point(const point &pt);
-	~point();
+	Point();
+	Point(double x, double y, double z): x(x), y(y), z(z) {};
+	Point(const Point &pt);
+	~Point();
 	void clear();
 	//int orientation(point pt);
 	void update(double x, double y, double z);
@@ -21,19 +21,19 @@ struct point
 	//bool operator < (const point *pt2);
 	//bool operator > (const point *pt2);
 	
-	int  orientation(const point *pt);
+	int  orientation(const Point *pt);
 	double magntd() const;
-	double dot(const point *pt) const;
-	double distance(const point *pt) const;
-	double altitd(const point *pt2) const;
-	double azimth(const point *pt2) const;
-	double slope(const point *pt2) const;
+	double dot(const Point *pt) const;
+	double distance(const Point *pt) const;
+	double altitd(const Point *pt2) const;
+	double azimth(const Point *pt2) const;
+	double slope(const Point *pt2) const;
 	void randomize();
-};
+} Point;
 
-bool compareX(const point &pt1, const point &pt2);
-bool compareY(const point &pt1, const point &pt2);
-bool compareZ(const point &pt1, const point &pt2);
+bool compareX(const Point &pt1, const Point &pt2);
+bool compareY(const Point &pt1, const Point &pt2);
+bool compareZ(const Point &pt1, const Point &pt2);
 
 
 //bool operator > (const point *pt1, const point *pt2);

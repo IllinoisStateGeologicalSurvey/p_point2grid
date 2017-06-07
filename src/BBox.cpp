@@ -4,19 +4,19 @@
 #include "BBox.hpp"
 /*
 BBox::BBox() {
-	struct point min;
-	struct point max;
+	struct Point min;
+	struct Point max;
 };
 
-BBox::BBox(struct point * _min, struct point *_max) {
-	struct point min(_min->x, _min->y);
-	struct point max(_max->x, _max->y);
+BBox::BBox(struct Point * _min, struct Point *_max) {
+	struct Point min(_min->x, _min->y);
+	struct Point max(_max->x, _max->y);
 };
 */
 /* Copy Constructor */
 /*BBox::BBox(const BBox& box) {
-	struct point min(box.min);
-	struct point max(box.max);
+	struct Point min(box.min);
+	struct Point max(box.max);
 }*/
 
 BBox::~BBox() {
@@ -26,7 +26,7 @@ BBox::~BBox() {
 	//delete max;
 };
 
-void BBox::update(struct point *_min, struct point *_max) {
+void BBox::update(struct Point *_min, struct Point *_max) {
 	min.update(_min->x, _min->y, _min->z);
 	max.update(_max->x, _max->y, _min->z);
 };
@@ -48,14 +48,14 @@ bool BBox::validate() {
 	}
 }
 
-struct point* BBox::centroid() {
+struct Point* BBox::centroid() {
 	//min.print();
 	//max.print();
 	
 	double midX = ((max.x - min.x)/2) + min.x;
 	double midY = ((max.y - min.y)/2) + min.y;
 	double midZ = ((max.z - min.z)/2) + min.z;
-	struct point *center = new point(midX, midY, midZ);
+	struct Point *center = new Point(midX, midY, midZ);
 	return center;
 }
 
@@ -70,14 +70,14 @@ double BBox::area() {
 
 
 vector<BBox*> BBox::subdivide() {
-	struct point* center = centroid();
+	struct Point* center = centroid();
 	//cout << "Creating centroid" << endl;
 	//center->print();
 	vector<BBox*> splits;
 	//NW Box
 	
-	struct point _min(min.x, center->y, min.z);
-	struct point _max(center->x, max.y, max.z);
+	struct Point _min(min.x, center->y, min.z);
+	struct Point _max(center->x, max.y, max.z);
 	BBox box;
 	//cout << "NW" << endl;
 	splits.push_back(new BBox(&_min, &_max));

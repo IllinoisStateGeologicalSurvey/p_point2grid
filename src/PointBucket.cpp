@@ -2,10 +2,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <iomanip>
-#include "Point.hpp"
-#include "PointBucket.hpp"
-#include "Grid.hpp"
-#include "GridPoint.hpp"
+#include "pct/Point.hpp"
+#include "pct/PointBucket.hpp"
+#include "pct/Grid.hpp"
+#include "pct/Pixel.hpp"
 #include <math.h>
 #include <float.h>
 #include <algorithm>
@@ -23,17 +23,17 @@ PointBucket::PointBucket() {
 	id = 0;
 	limit = 10000;
 	count = 0;
-	pts = (struct point *)malloc(sizeof(struct point) * limit);
-	//pts = new vector<point>();
+	pts = (struct Point *)malloc(sizeof(struct Point) * limit);
+	//pts = new vector<Point>();
 };
 
 PointBucket::PointBucket(int _id, int _limit, int _count, char* _baseDir) {
 	id = _id;
 	limit = _limit;
 	count = _count;
-	pts = (struct point *)malloc(sizeof(struct point) * limit);
+	pts = (struct Point *)malloc(sizeof(struct Point) * limit);
 	strcpy(&baseDir[0], _baseDir);
-	//pts = new vector<point>();
+	//pts = new vector<Point>();
 };
 
 PointBucket::~PointBucket() {
@@ -44,7 +44,7 @@ PointBucket::~PointBucket() {
 };
 
 
-bool PointBucket::insert(const struct point *pt) {
+bool PointBucket::insert(const struct Point *pt) {
 	if (count < limit) {
 		pts[count].update(pt->x, pt->y, pt->z);
 		//pts[count] = *pt;
@@ -71,9 +71,9 @@ void PointBucket::clear() {
 /** TODO: Fix this functionality, it really seems to work better 
 with vectors
 **/
-/*const struct point PointBucket::remove(int idx) {
+/*const struct Point PointBucket::remove(int idx) {
 	if (idx >= 0 && idx < count) {
-	struct point pt2 = pts[idx];
+	struct Point pt2 = pts[idx];
 	pts[idx].clear();
 	count--;
 	return pt2;
@@ -89,7 +89,7 @@ int PointBucket::maxDim() {
 	double maxZ = DBL_MIN;
 	double delts[3] = {0.0, 0.0, 0.0};
 	int i = 0;
-	struct point pt;
+	struct Point pt;
 	for (i = 0; i < limit; i++) {
 		pt = pts[i];
 		if (pt.x < minX) {
@@ -123,7 +123,7 @@ int PointBucket::maxDim() {
 	return dim;
 }
 		
-// This function will split the bucket along a given dimension at specified key, points, lower points will
+// This function will split the bucket along a given dimension at specified key, Points, lower Points will
 // remain in this bucket, upper will be transferred to second bucket
 //int PointBucket::split(struct PointBucket *bucket2, int dim) {
 	
@@ -142,9 +142,9 @@ int PointBucket::maxDim() {
 // placed in wrapper
 /*void PointBucket::split(struct PointBucket* bucket2) {
 	int n = count / 2;
-	std::vector<point>::reverse_iterator rit;
+	std::vector<Point>::reverse_iterator rit;
 	int i = count;
-	struct point pt;
+	struct Point pt;
 	for (i = count-1; i >= n; --i) {
 		pt = remove(i);
 		bucket2->insert(&pt);
@@ -178,10 +178,10 @@ int PointBucket::dump(const char* bucketFileName) {
 		return errno;
 	}
 	fwrite(&id, sizeof(int), 1, fp);
-	printf("Writing %i points...\n", count);
+	printf("Writing %i Points...\n", count);
 	fwrite(&count, sizeof(int), 1, fp);
 	int i = 0;
-	fwrite(&pts[0], sizeof(struct point), count, fp);
+	fwrite(&pts[0], sizeof(struct Point), count, fp);
 	int last = count - 1;
 	int mid = last / 2;
 	printf("Point %i, has values(%lf, %lf, %lf)\n", 0, pts[0].x, pts[0].y, pts[0].z);
@@ -189,7 +189,7 @@ int PointBucket::dump(const char* bucketFileName) {
 	//printf("Point %i, has values(%x, %x, %x)\n", mid, pts[mid].x, pts[mid].y, pts[mid].z);
 	printf("Point %i, has values(%lf, %lf, %lf)\n", last, pts[last].x, pts[last].y, pts[last].z);
 	//for ( i = 0; i < count; i++) {
-	//	fwrite(&pts->at(i), sizeof(struct point), 1, fp);
+	//	fwrite(&pts->at(i), sizeof(struct Point), 1, fp);
 	//}
 	fclose(fp);
 	return 1;
@@ -210,14 +210,14 @@ int PointBucket::read(const char* bucketFileName) {
 	int _id = 0;
 	fread(&_id, sizeof(int), 1, fp);
 	fread(&_count, sizeof(int), 1, fp);
-	printf("Bucket[%i] Reading %i points...\n", _id, _count);
+	printf("Bucket[%i] Reading %i Points...\n", _id, _count);
 	count = _count;
 	id = _id;
 	int i = 0;
-	//struct point pt;
-	//struct point *points = (struct point*)malloc(sizeof(struct point)*count);
+	//struct Point pt;
+	//struct Point *Points = (struct Point*)malloc(sizeof(struct Point)*count);
 	
-	fread(&pts[0], sizeof(struct point), count, fp);
+	fread(&pts[0], sizeof(struct Point), count, fp);
 	int last = count - 1;
 	int mid = last/2;
 	//printf("Point %i, has values(%lf, %lf, %lf)\n", 0, pts[0].x, pts[0].y, pts[0].z);
@@ -226,19 +226,19 @@ int PointBucket::read(const char* bucketFileName) {
 	
 	//printf("Point %i, has values (%lf, %lf, %lf)\n", last, pts[last].x, pts[last].y, pts[last].z);
 	//for (i = 0; i < count; i++) {
-	//	fread(&pt, sizeof(struct point), 1, fp);	
+	//	fread(&pt, sizeof(struct Point), 1, fp);	
 	//	pts->push_back(pt);
 		//}
 	fclose(fp);
-	//free(points);
+	//free(Points);
 	return 0;
 }
 
 // Return the number of buckets covered by this bucked
 // This assumes the coordinates xy refer to grid coordinates
-// This could also be replaced by a comparator operation to sort points based
+// This could also be replaced by a comparator operation to sort Points based
 // on block
-std::vector<int> PointBucket::getBlockList(blockScheme* bScheme) {
+std::vector<int> PointBucket::getBlockList(BlockScheme* bScheme) {
 	int cntr = 0;
 	int i,j = 0;
 	int block = 0;
@@ -264,8 +264,8 @@ std::vector<int> PointBucket::getBlockList(blockScheme* bScheme) {
 	return blocks;
 };
 
-/* Method to apply the points to grid */
-/* Note assumes points are in raster coords */
+/* Method to apply the Points to grid */
+/* Note assumes Points are in raster coords */
 int PointBucket::grid(Grid* destGrid) {
 	int i;
 	int count;
@@ -282,10 +282,10 @@ int PointBucket::grid(Grid* destGrid) {
 int PointBucket::send(int rank, MPI_Comm* comm, MPI_Request* req, MPI_Status *status) {
 	size_t headerSize = sizeof(int);
 	int err = 0;
-	size_t bufSize = (sizeof(point) * count)+ headerSize;
+	size_t bufSize = (sizeof(Point) * count)+ headerSize;
 	unsigned char buffer[bufSize];
 	memcpy(&buffer[0], &count, headerSize);
-	memcpy(&buffer[headerSize], &pts[0], sizeof(point)*count);
+	memcpy(&buffer[headerSize], &pts[0], sizeof(Point)*count);
 	fprintf(stdout, "sending Buffer to %i with %i pts.\n", rank, count);
 	err = MPI_Isend(&buffer[0], bufSize, MPI_BYTE, rank, 1, *comm, req); 
 	MPI_Wait(req, status);
@@ -298,7 +298,7 @@ int PointBucket::send(int rank, MPI_Comm* comm, MPI_Request* req, MPI_Status *st
 void PointBucket::print() {
 	printf("Bucket size: %i\n", count);
 	
-	//for (vector<point>::iterator it = pts->begin(); it != pts->end(); ++it) {
+	//for (vector<Point>::iterator it = pts->begin(); it != pts->end(); ++it) {
 	for (int i = 0; i < count; i++) {
 		
 		pts[i].print();

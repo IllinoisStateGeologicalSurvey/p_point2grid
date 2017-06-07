@@ -2,12 +2,12 @@
 #include <stdlib.h>
 #include <iomanip>
 #include <math.h>
-#include "Point.hpp"
-#include "Grid.hpp"
-#include "DTypes.h"
-#include "BlockScheme.hpp"
+#include "pct/Point.hpp"
+#include "pct/Grid.hpp"
+#include "pct/DTypes.hpp"
+#include "pct/BlockScheme.hpp"
 
-blockScheme::blockScheme() {
+BlockScheme::BlockScheme() {
 	cols = 0;
 	rows = 0;
 	b_cols = 0;
@@ -16,7 +16,7 @@ blockScheme::blockScheme() {
 	proc_count = 0;
 };
 
-blockScheme::~blockScheme() {
+BlockScheme::~BlockScheme() {
 	cols = 0;
 	rows = 0;
 	b_cols = 0;
@@ -25,29 +25,29 @@ blockScheme::~blockScheme() {
 	proc_count = 0;
 };
 
-void blockScheme::getBlockPosition(int rank, int* position) {
+void BlockScheme::getBlockPosition(int rank, int* position) {
 	position[0] = rank / b_cols;
 	position[1] = rank % b_cols;
 }
 // Get the ID of a block based on its col/row location
-int blockScheme::getBlockId(int x, int y) {
+int BlockScheme::getBlockId(int x, int y) {
 	int idx = y * cols + x;
 	return idx;
 }
 
 // Return the blockID based on the pixel coordinates
-int blockScheme::getBlock(long x, long y) {
+int BlockScheme::getBlock(long x, long y) {
 	int i = 0;
 	int b_x = floor((float)x / (float)b_cols);
 	int b_y = floor((float)y / (float)b_rows);
 	return getBlockId(b_x, b_y);
 }
 //TODO: Function to return a grid object from a block index
-int blockScheme::getBlockGrid(int blockId, Grid* grid, int res) {
+int BlockScheme::getBlockGrid(int blockId, Grid* grid, int res) {
 	int pos[2] = {0, 0};
 	// Make sure the x and y indexes are assigned properly by this function
 	getBlockPosition(blockId, &pos[0]);
-	struct point* _origin = new point();
+	struct Point* _origin = new Point();
 	_origin->x = pos[0] * b_cols;
 	_origin->y = pos[1] * b_rows;
 	_origin->z = 0.0;
@@ -55,11 +55,11 @@ int blockScheme::getBlockGrid(int blockId, Grid* grid, int res) {
 	return 0;
 }
 // Get the process rank based on the blockId
-int blockScheme::getBlockRank(int blockId) {
+int BlockScheme::getBlockRank(int blockId) {
 	return blockId % proc_count;
 }
 
-int blockScheme::getBlockCount(int rank) {
+int BlockScheme::getBlockCount(int rank) {
 	int gridSize = cols * rows;
 	int count = (int)gridSize / proc_count;
 	int rem = fmod(gridSize, proc_count);
@@ -69,7 +69,7 @@ int blockScheme::getBlockCount(int rank) {
 	return count;
 }
 
-int* blockScheme::getBlocks(int rank) {
+int* BlockScheme::getBlocks(int rank) {
 	int gridSize = cols * rows;
 	int counter = rank;
 	int i = 0;
@@ -88,7 +88,7 @@ int* blockScheme::getBlocks(int rank) {
  * @param grid: The grid to subdivide
  * @param block_limit: number of cells per block
  */
-blockScheme::blockScheme(Grid* grid, int block_limit, DType _datatype, int _proc_count) {
+BlockScheme::BlockScheme(Grid* grid, int block_limit, DType _datatype, int _proc_count) {
 	int gridSize = grid->cols * grid->rows;
 	//Start with block that is basically square from square root
 	b_cols = (int)sqrt(block_limit);

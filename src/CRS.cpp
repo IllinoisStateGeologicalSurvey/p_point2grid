@@ -1,8 +1,8 @@
 #include <math.h>
 #include <iostream>
-#include "Point.hpp"
-#include "CRS.hpp"
-#include "geocent.h"
+#include "pct/Point.hpp"
+#include "pct/CRS.hpp"
+#include "pct/geocent.h"
 /** 
  * Methods taken from https://www.osti.gov/scitech/servlets/purl/110235
  */
@@ -46,7 +46,7 @@ CRS::~CRS() {
 	eccentricity = 0.0;
 }
 
-void CRS::transform(struct point *pt) {
+void CRS::transform(struct Point *pt) {
 	//double C;
 	//double S;
 	
@@ -66,7 +66,7 @@ void CRS::transform(struct point *pt) {
 
 
 // as defined in https::/www.osti.gov/scitech/servlets/purl/110235/
-void CRS::reverse(struct point *pt) {
+void CRS::reverse(struct Point *pt) {
 	double x = pt->x;
 	double y = pt->y;
 	double z = pt->z;

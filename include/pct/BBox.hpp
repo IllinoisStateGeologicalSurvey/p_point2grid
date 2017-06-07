@@ -10,17 +10,17 @@ using namespace std;
 class BBox
 {
 	private:
-		struct point min;
-		struct point max;
+		struct Point min;
+		struct Point max;
 	public:
 		BBox(): min(0.0, 0.0, 0.0), max(0.0, 0.0, 0.0){};
-		BBox(struct point * _min, struct point * _max): min(*_min), max(*_max){};
+		BBox(struct Point * _min, struct Point * _max): min(*_min), max(*_max){};
 		BBox(const BBox& box): min(box.min), max(box.max){};
 		~BBox();
-		void update(struct point * _min, struct point * _max);
+		void update(struct Point * _min, struct Point * _max);
 		void updateMin(double _x, double _y, double _z);
 		void updateMax(double _x, double _y, double _z);
-		struct point* centroid();
+		struct Point* centroid();
 		double area();
 		vector<BBox*> subdivide();
 		bool validate();
