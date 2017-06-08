@@ -53,7 +53,7 @@ Grid::~Grid() {
 }
 /** Allocate the memory necessary for the given grid **/
 void * Grid::alloc() {
-	int d_size = GetDataTypeSize(datatype);
+	int d_size = sizeof(Pixel);
 	if (!d_size > 0) {
 		fprintf(stderr, "GridError: Invalid datatype prevented allocation\n");
 		return NULL;
@@ -62,15 +62,27 @@ void * Grid::alloc() {
 		fprintf(stderr, "GridError: Memory already allocated for grid data\n");
 		return NULL;
 	}
-	fprintf(stdout, "Allocating %ix%i %s cells", cols, rows, GetDataTypeName(datatype));
-	data = (Pixel*)malloc(sizeof(Pixel) * cols * rows);
+	fprintf(stdout, "Allocating %ix%i %zu cells\n", cols, rows, sizeof(Pixel));
+	//data = (Pixel*)malloc(sizeof(Pixel) * cols * rows);
+	//int i = 0;
+	int count = cols * rows;
+	//for (i = 0; i < count; i++) {
+	//	data[i] = new Pixel();
+	//}
+	int i = 0;
+	data = new Pixel[count];
+	for (i = 0; i < count; i++) {
+		data[i].count = 0;
+		data[i].sum = 0.0;
+		data[i].filled = 0;
+	}
 	//data = malloc(sizeof(cols * rows * d_size));
 	return data;
 }
 
 void Grid::dealloc() {
 	if (data != NULL) {
-		free(data);
+		delete[] data;
 		data = NULL;
 	}
 }
@@ -105,7 +117,7 @@ int Grid::write(char* outPath, int epsg) {
 	GDALSetGeoTransform(hDataset, adfGeoTransform);
 	printf("Import EPSG definition\n");
 	char proj4str[240] = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs";
-	err = OSRImportFromProj4(hSRS, &proj4str[0]);
+	err = OSRImportFromEPSG(hSRS, epsg);
 	if (err != 0) {
 		fprintf(stderr, "Error importing EPSG:%i , ErrCode: %i\n", epsg, err);
 	}
@@ -118,6 +130,8 @@ int Grid::write(char* outPath, int epsg) {
 	CPLFree( pszSRS_WKT);
 
 	hBand = GDALGetRasterBand(hDataset, 1);
+	// Set no data value for output raster
+	GDALSetRasterNoDataValue(hBand, -9999.0);
 	printf("Allocating sum array\n");
 	float* outArr = getSumArr();
 	printf("Writing output raster to %s\n", &outPath[0]);
@@ -137,7 +151,7 @@ int Grid::cellCount() {
 
 
 size_t Grid::getSize() {
-	size_t gridSize = (size_t)cols * rows * GetDataTypeSize(datatype);
+	size_t gridSize = (size_t)cols * rows * sizeof(Pixel);
 	return gridSize;
 }
 
@@ -156,7 +170,8 @@ int Grid::getCol(double coord) {
 	if (coord > getMaxX() || coord < origin->x) {
 		return -1;
 	}
-	int idx = ceil((coord - origin->x) / resX);
+	int idx = floor((coord - origin->x) / resX);
+	
 	return idx;
 }
 
@@ -164,7 +179,7 @@ int Grid::getRow(double coord) {
 	if (coord < getMinY() || coord > origin->y) {
 		return -1;
 	}
-	int idx = ceil((origin->y - coord) / resY);
+	int idx = floor((origin->y - coord) / resY);
 	return idx;
 }
 /** Test if a Point intersects with the grid **/
@@ -185,10 +200,22 @@ int Grid::within(const struct Point *pt) {
 int Grid::set(const struct Point* pt) {
 	int i, j;
 	int count = cols * rows;
-	i = (pt->y * rows) + pt->x;
-	if (i < 0 || i > count) {
+	int col, row = 0;
+	col = getCol(pt->x);
+	row = getRow(pt->y);
+	//i = (pt->y * rows) + pt->x;
+	//if (i < 0 || i > count) {
+	//	return 0;
+	//}
+	if (col < 0) {
 		return 0;
 	}
+	if (row < 0) {
+		return 0;
+	}
+	//printf("Point coord: (%f,%f,%f)\n", pt->x,pt->y,pt->z);
+	//printf("Pixel index is: [%i,%i]\n", col, row);
+	i = (row * cols) + col;
 	Pixel* cell = &data[i];
 	if (!cell->filled) {
 		cell->sum = pt->z;
@@ -197,8 +224,10 @@ int Grid::set(const struct Point* pt) {
 		return 1;
 	} else {
 		float tmpSum = cell->sum + pt->z;
+		int tmpCount = cell->count +1;
+		//printf("New sum = %f, count= %i\n", tmpSum, tmpCount);
 		cell->sum = tmpSum;
-		cell->count++;
+		cell->count = tmpCount;
 		return 1;
 	}
 	
@@ -210,7 +239,7 @@ float* Grid::getSumArr() {
 	int i = 0;
 	for (i = 0; i < count; i++) {
 		if (data[i].filled) {
-			out[i] = data[i].sum;
+			out[i] = data[i].avg();
 		} else {
 			out[i] = -9999.0;
 		}

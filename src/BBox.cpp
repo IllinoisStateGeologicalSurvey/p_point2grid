@@ -1,7 +1,7 @@
 #include <iostream>
 #include <vector>
-#include "Point.hpp"
-#include "BBox.hpp"
+#include "pct/Point.hpp"
+#include "pct/BBox.hpp"
 /*
 BBox::BBox() {
 	struct Point min;
@@ -66,6 +66,18 @@ double BBox::area() {
 	return area;
 }
 
+// Return true if the rectangles intersect
+int BBox::intersect(const BBox* other) {
+	// If one rectangle is on left of other
+	if (min.x > other->max.x || other->min.x > max.x) {
+		return 0;
+	}
+	// If one is above the other
+	if (max.y < other->min.y || other->max.y < min.y) {
+		return 0;
+	}
+	return 1;
+}
 
 
 

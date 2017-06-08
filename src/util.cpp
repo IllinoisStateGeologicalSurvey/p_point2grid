@@ -72,5 +72,28 @@ double to_degrees(double radians) {
 	return radians * (180.0 / M_PI);
 }
 
+void compareMin(double* mins, double* tmp) {
+	if (tmp[0] < mins[0])
+		mins[0] = tmp[0];
+	
+	if (tmp[1] < mins[1]) 
+		mins[1] = tmp[1];
+	
+	if (tmp[2] < mins[2])
+		mins[2] = tmp[2];
+}
+
+void compareMax(double* maxs, double* tmp) {
+	if (tmp[0] > maxs[0])
+		maxs[0] = tmp[0];
+
+	if (tmp[1] > maxs[1])
+		maxs[1] = tmp[1];
+
+	if (tmp[2] > maxs[2])
+		maxs[2] = tmp[2];
+}
+
+
 
 	

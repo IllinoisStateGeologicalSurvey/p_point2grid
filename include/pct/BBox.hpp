@@ -24,6 +24,7 @@ class BBox
 		double area();
 		vector<BBox*> subdivide();
 		bool validate();
+		int intersect(const BBox* other);
 		void print() const;
 };
 
