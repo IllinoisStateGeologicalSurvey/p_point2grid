@@ -6,7 +6,7 @@ CC=mpic++
 # 0 turns off messages, increasing value increases verbosity, 5 is max verbosity.
 PP2G_DEBUG_LEVEL?=0
 #CFLAGS=-I$(IDIR) -w -g -fpermissive -I/usr/include/gdal -DPP2G_DEBUG_LEVEL=$(PP2G_DEBUG_LEVEL)
-CFLAGS=-I$(IDIR) -g -fpermissive -I/usr/include/gdal -DPP2G_DEBUG_LEVEL=$(PP2G_DEBUG_LEVEL)
+CFLAGS=-I$(IDIR) -g -fpermissive -DPP2G_DEBUG_LEVEL=$(PP2G_DEBUG_LEVEL)
 #CFLAGS=-I$(IDIR) -O3 -fpermissive
 ADIR=./apps
 SDIR=./src
