@@ -1,0 +1,6 @@
+*.las
+*.tif
+Dockerfile*
+*pdf
+bin
+test
