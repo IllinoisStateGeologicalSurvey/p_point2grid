@@ -8,7 +8,4 @@ CMakeCache.txt
 *.dylib
 install_manifest.txt
 aux
-bin/p_points2grid
-
-
-
+bin/*
