@@ -42,8 +42,19 @@ obj/%.o: apps/%.cpp
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 
-.PHONY: clean
+.PHONY: clean build push login
 clean:
 	rm -f $(ODIR)/*.o ./.depend pp2g core p_points2grid
+
+build:
+	sudo docker build -t pp2g:latest .
+
+push:
+	sudo docker tag pp2g:latest ${DOCKER_ID_USER}/pp2g:latest
+	sudo docker push ${DOCKER_ID_USER}/pp2g:latest
+
+login:
+	sudo docker login -u ${DOCKER_LOGIN} -p ${DOCKER_PASS}
+
 
 
