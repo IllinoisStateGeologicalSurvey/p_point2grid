@@ -227,10 +227,11 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
                     input_files[i].point_count = las.points_count ();
                     input_files[i].peek_rank = rank;
                     las.close ();
-                    //printf("rank = %i i = %i point_count = %li\n", rank, i, input_files[i].point_count);
+                    printf("%s (%i of %i), point_count = %li\n", 
+                            input_files[i].name, i, input_file_count, 
+                            input_files[i].point_count);
 
                 }
-                //printf("rank = %i i = %i point_count = %li input_files[i].rank = %i\n", rank, i, input_files[i].point_count, input_files[i].peek_rank);
             }
             for (int i = 0; i < input_file_count; i++)
             {
@@ -258,13 +259,15 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
             {
                 if (input_files[i].peek_rank == -1)
                 {
-                    MPI_Recv (input_files[i].name, strlen(input_files[i].name)+1, MPI_CHAR, i % reader_count, 1, MPI_COMM_WORLD, NULL);
+                    MPI_Recv (input_files[i].name, strlen(input_files[i].name)+1, MPI_CHAR, i % reader_count, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                     MPI_Recv (&(input_files[i].min_x), 1, MPI_DOUBLE, i % reader_count, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                     MPI_Recv (&(input_files[i].min_y), 1, MPI_DOUBLE, i % reader_count, 3, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                     MPI_Recv (&(input_files[i].max_x), 1, MPI_DOUBLE, i % reader_count, 4, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                     MPI_Recv (&(input_files[i].max_y), 1, MPI_DOUBLE, i % reader_count, 5, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                     MPI_Recv (&(input_files[i].point_count), 1, MPI_LONG, i % reader_count, 6, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                     MPI_Recv (&(input_files[i].peek_rank), 1, MPI_INT, i % reader_count, 7, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    printf("received %s (%i of %i)\n", input_files[i].name, 
+                            i, input_file_count);
                 }
             }
             min_x = min_y = DBL_MAX;
@@ -290,6 +293,10 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
                 }
             }
         }
+        if (rank == 0) {
+            printf("region = (%8.4f, %8.4f), (%8.4f, %8.4f)\n", 
+                    min_x, min_y, max_x, max_y);
+        }
     }
 
     t1 = clock();
@@ -298,7 +305,8 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
     // Intialization Step excluding min/max searching
     //////////////////////////////////////////////////////////////////////
 
-    // send input file info collected above by the readers to the writers so all have it
+    // send input file info collected above by the readers to the 
+    // writers so all have it
     if(rank == 0){
         for(int i = reader_count; i < process_count; i++){
             MPI_Send (&min_x, 1, MPI_DOUBLE, i, 1, MPI_COMM_WORLD);
