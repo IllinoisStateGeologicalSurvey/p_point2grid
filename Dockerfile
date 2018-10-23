@@ -16,6 +16,6 @@ RUN apt update \
   && apt install -y --no-install-recommends mpich libmpich12 \
   libgdal20 libshp2 libboost-program-options1.65.1 libboost-iostreams1.65.1
 WORKDIR /app
-COPY --from=compile /src/p_points2grid /usr/local/bin
+COPY --from=compile /src/p_points2grid .
 
-CMD p_points2grid --help
+CMD /app/p_points2grid --help
