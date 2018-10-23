@@ -227,9 +227,9 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
                     input_files[i].point_count = las.points_count ();
                     input_files[i].peek_rank = rank;
                     las.close ();
-                    printf("%s (%i of %i), point_count = %li\n", 
-                            input_files[i].name, i, input_file_count, 
-                            input_files[i].point_count);
+//                    printf("%s (%i of %i), point_count = %li\n", 
+//                            input_files[i].name, i, input_file_count, 
+//                            input_files[i].point_count);
 
                 }
             }
@@ -266,8 +266,8 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
                     MPI_Recv (&(input_files[i].max_y), 1, MPI_DOUBLE, i % reader_count, 5, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                     MPI_Recv (&(input_files[i].point_count), 1, MPI_LONG, i % reader_count, 6, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                     MPI_Recv (&(input_files[i].peek_rank), 1, MPI_INT, i % reader_count, 7, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                    printf("received %s (%i of %i)\n", input_files[i].name, 
-                            i, input_file_count);
+//                    printf("received %s (%i of %i)\n", input_files[i].name, 
+//                            i, input_file_count);
                 }
             }
             min_x = min_y = DBL_MAX;
@@ -293,10 +293,10 @@ int Interpolation::init(char **inputNames, int inputNamesSize, int inputFormat, 
                 }
             }
         }
-        if (rank == 0) {
-            printf("region = (%8.4f, %8.4f), (%8.4f, %8.4f)\n", 
-                    min_x, min_y, max_x, max_y);
-        }
+//        if (rank == 0) {
+//            printf("region = (%8.4f, %8.4f), (%8.4f, %8.4f)\n", 
+//                    min_x, min_y, max_x, max_y);
+//        }
     }
 
     t1 = clock();
