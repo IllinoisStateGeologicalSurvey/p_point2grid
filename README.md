@@ -21,12 +21,13 @@ University of Texas-Austin.
 An MPI implementation must be installed. OpenMPI 1.6 and 1.8 are known to work
 and were used in development and testing. mpic++ must be found in your PATH.
 The following must also be installed:
-GDAL 1.9.2 or later with internal BIGTIFF.
-Boost 1.55 or later (program-options and iostreams modules only). 
-GEOS 3.4.2 or later.
-shapelib 1.3.0 or later.  
 
-## Native Install
+* GDAL 1.9.2 or later with internal BIGTIFF.
+* Boost 1.55 or later (program-options and iostreams modules only). 
+* GEOS 3.4.2 or later.
+* shapelib 1.3.0 or later.  
+
+## Native Install on Ubuntu
 
 ```sh
 $ sudo apt install -y libmpich-dev libgdal-dev libgeos++-dev libshp-dev \
@@ -56,23 +57,23 @@ Version 1.2 was tested most extensively with up to the 117 GB file size input,
 producing grids up to 27000X27000 cells. This cooresponds to 1 Meter resolution
 over a nominal 15 minute X 15 minute geographic extent. 
 
-> Input flags specific to p_points2grid are:
-> -m [--interpolation_mode]
-> -c [--reader_count]
-> -b [--buffer_size]
-> -t [--mpi_times]
-> -f [--input_data_file_name ]
-> --output_bbox
-> --output_shape
-> --keep_class
-> --first_returns
-> --last_returns
-> --epsg
-> --bigtiff
-> --fill_empty
+Input flags specific to p_points2grid are:
 
-All flags are documented with:
-bin/p_points2grid --help
+```
+-m [--interpolation_mode]
+-c [--reader_count]
+-b [--buffer_size]
+-t [--mpi_times]
+-f [--input_data_file_name ]
+--output_bbox
+--output_shape
+--keep_class
+--first_returns
+--last_returns
+--epsg
+--bigtiff
+--fill_empty
+```
 
 The output type of the grid is controlled with --min, --max, --mean, --idw,
 --std, -den, or --all. The default is all types.
